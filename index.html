@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>نظام المنتجات - موبايل</title>
+<link rel="icon" type="image/png" href="icon.png"/>
+<link rel="apple-touch-icon" href="icon.png"/>
+<link rel="manifest" href="manifest.json"/>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<!-- Splash - يظهر عند فتح التطبيق من الأيقونة -->
+<div id="splash" style="position:fixed;inset:0;background:#0d1117;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;overflow:hidden">
+  <div id="splashLogo" style="width:84px;height:84px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:#0d1117;transform:scale(0.3);opacity:0;box-shadow:0 0 0 rgba(200,148,58,0)"><img src="icon.png" alt="logo" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/></div>
+  <div id="splashRadar" style="display:none;flex-direction:column;align-items:center;gap:16px">
+    <div style="position:relative;width:140px;height:140px">
+      <div style="position:absolute;inset:0;border:1px solid #1c2333;border-radius:50%"></div>
+      <div style="position:absolute;inset:12px;border:1px solid #252d3d;border-radius:50%"></div>
+      <div style="position:absolute;inset:24px;border:1px solid #2d3543;border-radius:50%"></div>
+      <div id="radarSweep" style="position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg, transparent 0deg, rgba(200,148,58,0.15) 60deg, rgba(200,148,58,0.4) 90deg, transparent 90deg);animation:spin 1.6s linear infinite"></div>
+      <div style="position:absolute;left:50%;top:50%;width:8px;height:8px;background:#c8943a;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 10px #c8943a"></div>
+      <div style="position:absolute;left:30%;top:35%;width:6px;height:6px;background:#2d8a4e;border-radius:50%;opacity:0.9"></div>
+      <div style="position:absolute;left:65%;top:60%;width:5px;height:5px;background:#3a86c8;border-radius:50%;opacity:0.9"></div>
+    </div>
+    <div style="color:#c8943a;font-size:13px;letter-spacing:2px;font-weight:700;text-transform:uppercase">scanning database</div>
+    <div style="width:120px;height:2px;background:#1c2333;border-radius:2px;overflow:hidden"><div id="scanBar" style="height:100%;width:0%;background:linear-gradient(90deg,#c8943a,#dbaa55);transition:width 0.1s"></div></div>
+  </div>
+  <div id="splashLoading" style="display:none;color:#9e9e9e;font-size:12px;margin-top:18px">جاري التحميل...</div>
+</div>
+<style>
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulseGold{0%{transform:scale(1);box-shadow:0 0 0 0 rgba(200,148,58,0.6)}50%{transform:scale(1.06);box-shadow:0 0 18px 6px rgba(200,148,58,0.5)}100%{transform:scale(1);box-shadow:0 0 0 0 rgba(200,148,58,0)}}
+</style>
+<div class="phone">
+  <div class="titlebar" id="mainTitlebar" style="justify-content:center;overflow:hidden">
+    <div id="titleWrap" style="display:flex;gap:8px;align-items:center;justify-content:center;transition:transform 600ms cubic-bezier(0.22,1,0.36,1)">
+      <span id="mainTitle" style="font-weight:700;white-space:nowrap;overflow:hidden;max-width:0;opacity:0;transform:translateX(12px) scale(0.92);transform-origin:right center;transition:max-width 600ms cubic-bezier(0.22,1,0.36,1), opacity 400ms ease, transform 600ms cubic-bezier(0.22,1,0.36,1)">شركة النحال لقطع الغيار</span>
+      <span id="mainLogo" class="logo" style="width:32px;height:32px;border-radius:6px;overflow:hidden;display:grid;place-items:center;background:#0d1117;border:1px solid #c8943a;flex-shrink:0;transition:transform 600ms cubic-bezier(0.22,1,0.36,1)"> <img src="icon.png" alt="logo" style="width:100%;height:100%;object-fit:cover"/></span>
+    </div>
+  </div>
+  <div class="toolbar">
+    <span class="user" id="userLabel">المستخدم: admin</span>
+    <span id="clock">--:--</span>
+    <span id="dateLabel">--/--/--</span>
+  </div>
+  <div style="text-align:center;padding:6px;font-size:11px;color:#9e9e9e;background:#151b23;border-bottom:1px solid #2d3543">
+    <span id="syncStatus">جاري المزامنة...</span>
+    <button onclick="syncFromApi()" style="margin-right:8px;padding:2px 8px;font-size:11px;background:#c8943a;color:#fff;border:none;border-radius:4px">↻ مزامنة</button>
+    <span style="font-size:10px;color:#6c7a91">API: <span id="apiUrl"></span></span>
+  </div>
+
+  <!-- ADMIN VIEW - اضافة منتج فقط -->
+  <div id="viewAdmin" class="view active">
+    <div class="card">
+      <div class="card-header">إضافة منتج</div>
+      <div class="card-body">
+        <label class="label">اسم المنتج</label>
+        <input id="pName" class="input" placeholder=" "/>
+        <label class="label">الباركود (يُنشأ تلقائياً)</label>
+        <div class="row"><input id="pBarcode" class="input" placeholder="auto" style="text-align:center"/><button class="btn btn-accent" style="width:42px" onclick="genBarcode()">↻</button></div>
+        <label class="label">الفئة</label>
+        <select id="pCat" class="input"><option>عام</option><option>أجهزة</option><option>قطع غيار</option><option>إكسسوارات</option><option>أخرى</option></select>
+        <div class="row" style="margin-top:8px">
+          <div style="flex:1"><label class="label">السعر</label><input id="pPrice" class="input" placeholder="0.00" style="text-align:center"/></div>
+          <div style="flex:1"><label class="label">المخزون</label><input id="pStock" class="input" placeholder="0" style="text-align:center"/></div>
+        </div>
+        <label class="label">الوصف (اختياري)</label>
+        <input id="pDesc" class="input" placeholder=" "/>
+        <div style="height:70px;background:#1c2333;border:1px solid #2d3543;border-radius:8px;display:grid;place-items:center;margin:10px 0;color:#9e9e9e;font-size:12px" id="barcodePreview">معاينة الباركود</div>
+        <button class="btn btn-success" style="width:100%;height:46px" onclick="saveProduct()">حفظ المنتج + باركود</button>
+        <div class="row" style="margin-top:8px"><button class="btn btn-ghost" style="flex:1" onclick="clearForm()">مسح</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- USER VIEW - قائمة المنتجات (متسعرة فقط) -->
+  <div id="viewUser" class="view" style="display:none">
+    <div class="card">
+      <div class="card-header" style="justify-content:space-between;padding:0 12px"><span>قائمة المنتجات</span><button class="btn btn-ghost" style="height:28px;padding:0 10px" onclick="renderUserTable()">تحديث</button></div>
+      <div class="search-row">
+        <input id="searchUser" class="input" placeholder="بحث بالاسم أو الباركود أو الرقم" oninput="renderUserTable()"/>
+        <button class="btn btn-accent" style="width:40px" onclick="renderUserTable()">⌕</button>
+      </div>
+      <div class="list-header">
+        <span class="w-num">الرقم</span>
+        <span class="w-num">المتاح</span>
+        <span>السعر</span>
+        <span>الفئة</span>
+        <span>الباركود</span>
+        <span>الاسم</span>
+      </div>
+      <div id="userTableBody" style="flex:1;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none"></div>
+    </div>
+  </div>
+
+  <!-- PRICING VIEW - تسعير منتج: مزامنة مع المنتجات اللي سعرها 0 -->
+  <div id="viewPricing" class="view" style="display:none">
+    <div class="card">
+      <div class="card-header" style="justify-content:space-between;padding:0 12px"><span>تسعير منتج</span><span id="pricingCount" class="badge">0 جاهز</span></div>
+      <div style="padding:10px;color:#9e9e9e;font-size:12px;text-align:right">مزامنة مع قاعدة البيانات: المنتجات التي سعرها 0 تظهر هنا جاهزة للتسعير</div>
+      <div class="search-row">
+        <input id="searchPricing" class="input" placeholder="بحث في المنتجات غير المسعرة" oninput="renderPricingTable()"/>
+        <button class="btn btn-accent" style="width:40px" onclick="syncPricing()">↻</button>
+      </div>
+      <div class="list-header">
+        <span class="w-num">الرقم</span>
+        <span>الاسم</span>
+        <span>الباركود</span>
+        <span style="flex:0 0 90px">تسعير</span>
+      </div>
+      <div id="pricingTableBody"></div>
+    </div>
+  </div>
+
+  <div class="tabs" style="position:sticky;bottom:0;background:var(--bg-dark);border-top:1px solid var(--border);overflow-x:auto;white-space:nowrap;scrollbar-width:none;-ms-overflow-style:none">
+    <div style="display:flex;gap:8px;padding:10px;min-width:max-content">
+      <button id="tabAdmin" class="active" onclick="switchRole('admin')" style="min-width:120px">اضافة منتج</button>
+      <button id="tabUser" onclick="switchRole('employee')" style="min-width:120px">المنتجات </button>
+      <button id="tabPricing" onclick="switchRole('pricing')" style="min-width:120px">تسعير منتج</button>
+    </div>
+  </div>
+</div>
+<script>
+// Splash sequence: أيقونة → تكبير للمنتصف → نبض ذهبي → تحميل 2s → سحب للأعلى → رادار + scanning database → فتح التطبيق
+(function(){
+  const splash=document.getElementById('splash');
+  const logo=document.getElementById('splashLogo');
+  const radar=document.getElementById('splashRadar');
+  const loading=document.getElementById('splashLoading');
+  const bar=document.getElementById('scanBar');
+  if(!splash||!logo) return;
+  // 1) تكبير الأيقونة للمنتصف (0.7s)
+  logo.style.transition='transform 700ms cubic-bezier(0.34,1.56,0.64,1), opacity 500ms ease, box-shadow 500ms ease';
+  requestAnimationFrame(()=>{
+    logo.style.transform='scale(1)';
+    logo.style.opacity='1';
+    logo.style.boxShadow='0 8px 30px rgba(200,148,58,0.35)';
+  });
+  // 2) نبض ذهبي فقط (بدون دائرة خارجية)
+  setTimeout(()=>{
+    logo.style.animation='pulseGold 1s ease 2';
+  }, 750);
+  // 3) صفحة تحميل 2 ثانية
+  setTimeout(()=>{
+    loading.style.display='block';
+    loading.style.opacity='0';
+    loading.style.transition='opacity 300ms';
+    requestAnimationFrame(()=>loading.style.opacity='1');
+  }, 900);
+  setTimeout(()=>{
+    // 4) سحب اللوجو للأعلى واختفاء
+    logo.style.transition='transform 700ms cubic-bezier(0.55,0,0.55,0.2), opacity 500ms ease';
+    logo.style.transform='translateY(-180px) scale(0.6)';
+    logo.style.opacity='0';
+    loading.style.opacity='0';
+    // 5) إظهار الرادار + scanning database
+    setTimeout(()=>{
+      radar.style.display='flex';
+      radar.style.opacity='0';
+      radar.style.transform='scale(0.9)';
+      radar.style.transition='opacity 500ms ease, transform 500ms cubic-bezier(0.34,1.56,0.64,1)';
+      requestAnimationFrame(()=>{
+        radar.style.opacity='1';
+        radar.style.transform='scale(1)';
+      });
+      let w=0;
+      const iv=setInterval(()=>{
+        w+= Math.random()*18+8;
+        if(w>=100){ w=100; bar.style.width='100%'; clearInterval(iv); 
+          // 6) فتح التطبيق
+          setTimeout(()=>{
+            splash.style.transition='opacity 600ms ease, transform 600ms ease';
+            splash.style.opacity='0';
+            splash.style.transform='scale(1.05)';
+            setTimeout(()=>splash.remove(), 650);
+          }, 700);
+        } else bar.style.width=w+'%';
+      }, 120);
+    }, 400);
+  }, 2900); // 0.7 + 1.0 + 2.0 ≈ 2.9s قبل السحب
+})();
+</script>
+<script>
+// انيميشن عنوان شركة النحال: اللوجو في المنتصف ثم العنوان يخرج منه واللوجو يرجع شمال العنوان
+window.addEventListener('load', ()=>{
+  const title = document.getElementById('mainTitle');
+  const logo = document.getElementById('mainLogo');
+  if(!title || !logo) return;
+  // يبدأ بعد انتهاء السبلاش (~4.2s) — لو السبلاش غير موجود يبدأ فوراً
+  const start = ()=>{
+    // اجعل العنوان يتمدد كأنه خارج من اللوجو
+    title.style.maxWidth = '220px';
+    title.style.opacity = '1';
+    title.style.transform = 'translateX(0) scale(1)';
+    // لمعة خفيفة للوجو عند الاستقرار
+    setTimeout(()=>{ logo.style.transform='scale(1.06)'; setTimeout(()=>logo.style.transform='scale(1)', 180); }, 620);
+  };
+  // لو السبلاش موجود انتظر إزالته، وإلا ابدأ بعد 600ms
+  const splash = document.getElementById('splash');
+  if(splash){
+    const obs = new MutationObserver(()=>{
+      if(!document.body.contains(splash) || splash.style.opacity==='0'){
+        setTimeout(start, 350);
+        obs.disconnect();
+      }
+    });
+    obs.observe(document.body, {childList:true});
+    // fallback بعد 4.5s
+    setTimeout(start, 4500);
+  } else {
+    setTimeout(start, 600);
+  }
+});
+</script>
+<script src="app.js"></script>
+</body>
+</html>
