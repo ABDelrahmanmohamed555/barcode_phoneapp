@@ -138,7 +138,7 @@ async function syncFromApi(){
   const localBase = getApiBase();
   if(localBase) bases.push(localBase);
   // عبر الإنترنت Cloudflare (يعمل من 4G)
-  const PUBLIC_CF = 'https://mileage-officially-narrow-oldest.trycloudflare.com';
+  const PUBLIC_CF = 'https://reason-widely-continent-sorry.trycloudflare.com';
   if(!bases.includes(PUBLIC_CF)) bases.push(PUBLIC_CF);
   // جرب كل bases
   for(const base of bases){
@@ -167,7 +167,7 @@ async function syncFromApi(){
 }
 async function apiPostProduct(prod){
   if(!useApi) return null;
-  const bases = [getApiBase(), 'https://mileage-officially-narrow-oldest.trycloudflare.com'];
+  const bases = [getApiBase(), 'https://reason-widely-continent-sorry.trycloudflare.com'];
   for(const base of bases){
     try{
       const r=await fetch(`${base}/api/products`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(prod)});
@@ -179,7 +179,7 @@ async function apiPostProduct(prod){
 }
 async function apiPatchPrice(id, price){
   if(!useApi) return null;
-  const bases = [getApiBase(), 'https://mileage-officially-narrow-oldest.trycloudflare.com'];
+  const bases = [getApiBase(), 'https://reason-widely-continent-sorry.trycloudflare.com'];
   for(const base of bases){
     try{
       const r=await fetch(`${base}/api/products/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({price})});

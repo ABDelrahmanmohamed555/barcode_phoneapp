@@ -128,7 +128,7 @@
       urls.push(location.origin + '/version.json');
     }
     // --- عبر الإنترنت (Cloudflare Tunnel) — يعمل من أي مكان حتى لو مش نفس الواي فاي ---
-    const PUBLIC_CLOUDFLARE = 'https://mileage-officially-narrow-oldest.trycloudflare.com';
+    const PUBLIC_CLOUDFLARE = 'https://reason-widely-continent-sorry.trycloudflare.com';
     urls.push(PUBLIC_CLOUDFLARE + '/api/app_version');
     urls.push(PUBLIC_CLOUDFLARE + '/version.json');
     // --- عبر الإنترنت (Catbox - بدون سيرفر) — يعمل حتى لو اللابتوب مطفي ---
