@@ -140,10 +140,12 @@ async function syncFromApi(){
   // عبر الإنترنت Cloudflare (يعمل من 4G)
   const PUBLIC_CF = 'https://reason-widely-continent-sorry.trycloudflare.com';
   if(!bases.includes(PUBLIC_CF)) bases.push(PUBLIC_CF);
-  // جرب كل bases
+  // جرب كل bases بمهلة قصيرة (3s) حتى لا يعلق على 192.168.1.8
   for(const base of bases){
     try{
-      const r = await fetch(`${base}/api/products`);
+      const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 3000);
+      const r = await fetch(`${base}/api/products?_t=`+Date.now(), {cache:'no-store', signal: ctrl.signal, mode:'cors', credentials:'omit'});
+      clearTimeout(t);
       if(!r.ok) throw new Error(r.status);
       const data = await r.json();
       if(Array.isArray(data) && data.length>0){
