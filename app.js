@@ -81,19 +81,55 @@ function _saveLocal(){
   try{ localStorage.setItem('prot_products', JSON.stringify(products)); }catch(e){}
 }
 
-// --- مزامنة حقيقية + محلية + عبر الإنترنت GitHub ---
-const GITHUB_PRODUCTS_RAW = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main/products.json';
-const GITHUB_PRODUCTS_FALLBACK = 'https://files.catbox.moe/87yk0c.json'.replace('87yk0c.json','products.json'); // سيتم رفعه مع version
+// --- مزامنة حقيقية + محلية + عبر الإنترنت GitHub (جذري) ---
+const GITHUB_REPO = 'ABDelrahmanmohamed555/barcode_phoneapp';
+const GITHUB_PRODUCTS_RAW = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/products.json`;
+const GITHUB_PRODUCTS_API = `https://api.github.com/repos/${GITHUB_REPO}/contents/products.json`;
+const GITHUB_TOKEN_KEY = 'github_token';
+function getGitHubToken(){ try{ return localStorage.getItem(GITHUB_TOKEN_KEY) || null; }catch(e){ return null; } }
+function setGitHubToken(t){ try{ if(t) localStorage.setItem(GITHUB_TOKEN_KEY, t); else localStorage.removeItem(GITHUB_TOKEN_KEY); }catch(e){} }
+function b64EncodeUtf8(str){ return btoa(unescape(encodeURIComponent(str))); }
+function b64DecodeUtf8(b64){ return decodeURIComponent(escape(atob(b64))); }
+let _githubSha = null; // آخر sha للـ products.json
 
 async function syncFromGitHub(){
-  // جلب products.json من GitHub Raw (يعمل عبر الإنترنت حتى لو اللابتوب مطفي بعد push)
+  // حل جذري: GitHub هو قاعدة البيانات المشتركة — يعمل حتى لو اللابتوب مطفي
+  // يقرأ مباشرة من Contents API (أحدث من raw) ويدعم الكتابة أيضاً
+  const token = getGitHubToken();
+  // 1) حاول Contents API (يدعم حتى المنتجات لحظياً + يعطي sha للكتابة)
   try{
-    const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 7000);
+    const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 6000);
+    const headers = {'Accept':'application/vnd.github.v3+json'};
+    if(token) headers['Authorization'] = `token ${token}`;
+    const r = await fetch(GITHUB_PRODUCTS_API + '?_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal, headers});
+    clearTimeout(t);
+    if(r.ok){
+      const j = await r.json();
+      _githubSha = j.sha;
+      const content = b64DecodeUtf8(j.content.replace(/\n/g,''));
+      const data = JSON.parse(content);
+      if(Array.isArray(data) && data.length>=0){
+        if(JSON.stringify(data) !== JSON.stringify(products)){
+          products = data;
+          _saveLocal();
+          renderUserTable(); renderPricingTable();
+          const tb=document.getElementById('tableBody'); if(tb) renderTable();
+        }
+        const badge=document.getElementById('syncStatus');
+        if(badge){ badge.textContent=`سحابي ✓ ${products.length}`; badge.style.color='#2d8a4e'; }
+        console.log(`✓ مزامنة GitHub API: ${products.length} منتج sha:${_githubSha?.slice(0,7)}`);
+        return true;
+      }
+    }
+  }catch(e){ console.log('GitHub API fail', e.message); }
+  // 2) fallback Raw (بدون token، للقراءة فقط)
+  try{
+    const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 6000);
     const r = await fetch(GITHUB_PRODUCTS_RAW + '?_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal});
     clearTimeout(t);
     if(!r.ok) throw new Error(r.status);
     const data = await r.json();
-    if(Array.isArray(data) && data.length>0){
+    if(Array.isArray(data) && data.length>=0){
       if(JSON.stringify(data) !== JSON.stringify(products)){
         products = data;
         _saveLocal();
@@ -102,11 +138,34 @@ async function syncFromGitHub(){
       }
       const badge=document.getElementById('syncStatus');
       if(badge){ badge.textContent=`سحابي ✓ ${products.length}`; badge.style.color='#2d8a4e'; }
-      console.log(`✓ مزامنة GitHub: ${products.length} منتج`);
+      console.log(`✓ مزامنة GitHub Raw: ${products.length} منتج`);
       return true;
     }
-  }catch(e){ console.log('GitHub sync fail', e.message); }
+  }catch(e){ console.log('GitHub Raw fail', e.message); }
   return false;
+}
+async function githubPushProducts(newProducts, message){
+  const token = getGitHubToken();
+  if(!token){
+    console.log('GitHub push skip: no token');
+    return false;
+  }
+  try{
+    let sha = _githubSha;
+    if(!sha){
+      const r = await fetch(GITHUB_PRODUCTS_API, {headers:{'Accept':'application/vnd.github.v3+json','Authorization':`token ${token}`}});
+      if(r.ok){ const j=await r.json(); sha=j.sha; _githubSha=sha; }
+    }
+    const content = b64EncodeUtf8(JSON.stringify(newProducts, null, 2));
+    const body = {message: message || `auto sync products ${new Date().toISOString()}`, content, sha};
+    if(!sha) delete body.sha;
+    const r = await fetch(GITHUB_PRODUCTS_API, {method:'PUT', headers:{'Content-Type':'application/json','Accept':'application/vnd.github.v3+json','Authorization':`token ${token}`}, body: JSON.stringify(body)});
+    if(!r.ok) throw new Error(await r.text());
+    const j = await r.json();
+    _githubSha = j.content.sha;
+    console.log('✓ GitHub push products', _githubSha.slice(0,7));
+    return true;
+  }catch(e){ console.log('GitHub push fail', e.message); return false; }
 }
 async function syncFromLocalFile(){
   try{
@@ -222,10 +281,17 @@ async function saveProduct(){
     }
   }
   const id=Math.max(0,...products.map(p=>p.id))+1;
-  products.unshift({id,name,barcode:barcode||"880"+Date.now(),category:cat,price,stock,desc});
+  const newProd={id,name,barcode:barcode||"880"+Date.now(),category:cat,price,stock,desc};
+  products.unshift(newProd);
   _saveLocal();
   renderUserTable();
   if(document.getElementById('tableBody')) renderTable();
+  renderPricingTable();
+  // حل جذري: ارفع لـ GitHub حتى لو API غير متصل (يعمل عبر الإنترنت)
+  githubPushProducts(products, `auto sync products add ${name}`).then(ok=>{
+    if(ok) console.log('✓ تم رفع المنتج لـ GitHub');
+  });
+  alert(`تم الحفظ محلياً ✓\n${name} - ${price} جنيه${getGitHubToken()?' (سيرفع لـ GitHub)':''}`);
 }
 
 function renderTable(){
@@ -392,6 +458,11 @@ async function setPrice(id){
   renderPricingTable();
   renderUserTable();
   const tb=document.getElementById('tableBody'); if(tb) renderTable();
+  // حل جذري: ارفع لـ GitHub
+  githubPushProducts(products, `auto sync products price ${id}=${v}`).then(ok=>{
+    if(ok) console.log('✓ GitHub price push');
+  });
+  alert(`تم تحديث السعر محلياً ✓ ${v} جنيه${getGitHubToken()?' (سيرفع لـ GitHub)':''}`);
 }
 function scanEnter(){
   // لم تعد السلة موجودة - البحث الآن عبر القائمة

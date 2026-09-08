@@ -49,8 +49,19 @@
     <span id="syncStatus">جاري المزامنة...</span>
     <button onclick="syncFromApi()" style="margin-right:8px;padding:2px 8px;font-size:11px;background:#c8943a;color:#fff;border:none;border-radius:4px">↻ مزامنة</button>
     <button onclick="checkForUpdate()" style="margin-right:4px;padding:2px 8px;font-size:11px;background:#2d8a4e;color:#fff;border:none;border-radius:4px">⬇ تحديث</button>
+    <button onclick="promptGitHubToken()" style="margin-right:4px;padding:2px 8px;font-size:10px;background:#1c2333;color:#c8943a;border:1px solid #2d3543;border-radius:4px">⚙ GitHub</button>
     <span style="font-size:10px;color:#6c7a91">API: <span id="apiUrl"></span> | v<span id="otaVerLabel">1.0.0</span></span>
   </div>
+  <script>
+  function promptGitHubToken(){
+    const cur = localStorage.getItem('github_token') || '';
+    const t = prompt('أدخل GitHub Token للمزامنة السحابية (اتركه فارغاً للقراءة فقط):', cur);
+    if(t===null) return;
+    if(t.trim()){ localStorage.setItem('github_token', t.trim()); alert('✓ تم حفظ Token - المزامنة الكاملة مفعلة'); }
+    else { localStorage.removeItem('github_token'); alert('تم إزالة Token - القراءة فقط'); }
+    location.reload();
+  }
+  </script>
 
   <!-- ADMIN VIEW - اضافة منتج فقط -->
   <div id="viewAdmin" class="view active">
