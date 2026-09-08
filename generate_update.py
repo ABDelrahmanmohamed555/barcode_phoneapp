@@ -35,6 +35,7 @@ def main():
     ap.add_argument("--build", type=int, help="رقم البناء (لو فارغ يزيد تلقائياً)")
     ap.add_argument("--notes", default="", help="ملاحظات التحديث")
     ap.add_argument("--part", choices=["patch","minor","major"], default="patch", help="جزء الزيادة لو لم تحدد version")
+    ap.add_argument("--push", action="store_true", help="رفع تلقائي إلى GitHub بعد الإنشاء (يتطلب GITHUB_TOKEN)")
     args = ap.parse_args()
 
     data = load_version()
@@ -88,10 +89,26 @@ def main():
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dest)
 
+    if args.push:
+        import subprocess, os
+        # استخدم push_to_github.py
+        push_script = BASE / "push_to_github.py"
+        if push_script.exists():
+            msg = f"update {new_ver} - {data['notes']}"
+            print(f"\n→ رفع إلى GitHub: {msg}")
+            subprocess.run([os.sys.executable, str(push_script), "--message", msg], cwd=BASE)
+        else:
+            # fallback مباشر
+            import subprocess as sp
+            sp.run(["git", "add", "version.json","app.js","style.css","index.html","updater.js","sw.js","products.json"], cwd=BASE)
+            sp.run(["git", "commit","-m", f"update {new_ver} - {data['notes']}"], cwd=BASE)
+            sp.run(["git", "push","origin","main"], cwd=BASE)
+
     print("\nالخطوة التالية:")
-    print(f"  1. تأكد أن sync_api.py يعمل: python3 ../prot/sync_api.py")
-    print(f"  2. افتح التطبيق على الموبايل واضغط ⬇ تحديث أو انتظر الفحص التلقائي")
-    print(f"  3. للـ APK الجديد (لو غيرت config.xml): cd protPhone && cordova build android")
+    print(f"  1. تأكد أن sync_api.py يعمل: python3 ../prot/sync_api.py  (للمزامنة المحلية)")
+    print(f"  2. للإنترنت: python3 push_to_github.py --message 'update {new_ver}'  (أو استخدم --push)")
+    print(f"  3. افتح التطبيق على الموبايل واضغط ⬇ تحديث أو انتظر الفحص التلقائي (GitHub كل 5 دقائق)")
+    print(f"  4. للـ APK الجديد (لو غيرت config.xml): cd protPhone && cordova build android")
 
 if __name__ == "__main__":
     main()

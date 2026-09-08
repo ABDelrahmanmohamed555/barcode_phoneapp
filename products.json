@@ -1,16 +1,29 @@
 [
   {
-    "id": 38,
-    "name": "موبينة هيلتي كراون 1250 ماكس",
-    "barcode": "88111469",
+    "id": 39,
+    "name": "كاوتشة غعسالة توشيبا",
+    "barcode": "8803901533378",
     "category": "قطع غيار",
     "price": 0.0,
-    "stock": 2,
+    "stock": 8,
     "description": "",
     "image_path": "",
-    "barcode_path": "/home/kali/Desktop/prot/assets/barcodes/88111469.png",
-    "created_at": "2026-09-05 15:17:44",
-    "updated_at": "2026-09-05 15:40:21"
+    "barcode_path": "/home/kali/Desktop/prot/assets/barcodes/8803901533378.png",
+    "created_at": "2026-09-08 13:18:34",
+    "updated_at": "2026-09-08 13:18:44"
+  },
+  {
+    "id": 38,
+    "name": "كاوتشة غسالة توشيبا",
+    "barcode": "8809987644250",
+    "category": "قطع غيار",
+    "price": 0.0,
+    "stock": 29,
+    "description": "",
+    "image_path": "",
+    "barcode_path": "/home/kali/Desktop/prot/assets/barcodes/8809987644250.png",
+    "created_at": "2026-09-07 12:12:06",
+    "updated_at": "2026-09-07 12:12:44"
   },
   {
     "id": 37,
@@ -135,12 +148,12 @@
     "barcode": "8808717568194",
     "category": "إكسسوارات",
     "price": 10.0,
-    "stock": 18,
+    "stock": 17,
     "description": "",
     "image_path": "",
-    "barcode_path": "/home/kali/Desktop/prot/assets/barcodes/8808717568194.png",
+    "barcode_path": "/home/kali/Desktop/cashier/prot/assets/barcodes/8808717568194.png",
     "created_at": "2026-09-02 09:28:36",
-    "updated_at": "2026-09-05 15:09:17"
+    "updated_at": "2026-09-02 09:29:35"
   },
   {
     "id": 15,

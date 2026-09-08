@@ -127,10 +127,16 @@
     if(location.origin && location.origin !== 'null' && location.origin !== 'file://'){
       urls.push(location.origin + '/version.json');
     }
-    // --- عبر الإنترنت (GitHub Raw) — يعمل حتى لو اللابتوب مطفي ---
+    // --- عبر الإنترنت (Cloudflare Tunnel) — يعمل من أي مكان حتى لو مش نفس الواي فاي ---
+    const PUBLIC_CLOUDFLARE = 'https://mileage-officially-narrow-oldest.trycloudflare.com';
+    urls.push(PUBLIC_CLOUDFLARE + '/api/app_version');
+    urls.push(PUBLIC_CLOUDFLARE + '/version.json');
+    // --- عبر الإنترنت (Catbox - بدون سيرفر) — يعمل حتى لو اللابتوب مطفي ---
+    const PUBLIC_CATBOX = 'https://files.catbox.moe/87yk0c.json';
+    urls.push(PUBLIC_CATBOX);
+    // --- عبر الإنترنت (GitHub Raw) — يعمل حتى لو اللابتوب مطفي (بعد push) ---
     const PUBLIC_RAW = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main/version.json';
     urls.push(PUBLIC_RAW);
-    // حاول أيضاً المسار القديم لو كان الملف داخل مجلد
     urls.push(PUBLIC_RAW.replace('/version.json','/phone%20app/version.json'));
     return [...new Set(urls)];
   }
@@ -230,6 +236,62 @@
     }
   }
 
+  // --- فحص GitHub commits بعنوان update+رقم (مطابق لـ prot/updater.py) ---
+  const GITHUB_COMMITS_API = 'https://api.github.com/repos/ABDelrahmanmohamed555/barcode_phoneapp/commits?per_page=20&sha=main';
+  const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main';
+  const STORAGE_GITHUB_SHA = 'ota_github_sha';
+  function isUpdateCommit(msg){
+    if(!msg) return false;
+    const first = msg.split('\n')[0].trim();
+    const pats = [
+      /^\s*update\s*[:\-]?\s*\d+\s*$/i,
+      /^\s*update\s+\d+\s*$/i,
+      /^\s*v\d+\.\d+.*$/i,
+      /^\s*version\s*[:\-]?\s*\d+.*$/i
+    ];
+    for(const p of pats) if(p.test(first)) return true;
+    if(first.toLowerCase().startsWith('update')){
+      const rest = first.slice(6).trim().replace(/^[:\-\s]+/,'');
+      if(rest && /^\d/.test(rest)) return true;
+    }
+    return false;
+  }
+  async function checkGitHubUpdates(){
+    const ctrl = new AbortController();
+    const t = setTimeout(()=> ctrl.abort(), 8000);
+    try{
+      const r = await fetch(GITHUB_COMMITS_API + '&_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal, headers:{'Accept':'application/vnd.github.v3+json'}});
+      clearTimeout(t);
+      if(!r.ok) throw new Error('GitHub '+r.status);
+      const commits = await r.json();
+      if(!Array.isArray(commits)) return null;
+      const lastSha = (()=>{ try{ return localStorage.getItem(STORAGE_GITHUB_SHA); }catch(e){return null;} })();
+      for(const c of commits){
+        const msg = c.commit && c.commit.message ? c.commit.message : '';
+        if(isUpdateCommit(msg)){
+          const sha = c.sha;
+          if(sha === lastSha) return null; // نفس آخر تحديث تم تجاهله/تثبيته
+          // وجد تحديث جديد
+          console.log('[OTA] وجد commit تحديث', sha.slice(0,7), msg);
+          // حاول جلب version.json من هذا الـ commit عبر raw
+          try{
+            const rawUrl = `${GITHUB_RAW_BASE}/version.json?_t=${Date.now()}`;
+            // استخدم fetchVersion للتحقق
+            const verData = await fetchVersion(rawUrl);
+            verData._sourceBase = GITHUB_RAW_BASE;
+            verData._githubSha = sha;
+            verData._commitMsg = msg;
+            return verData;
+          }catch(e){
+            // لو فشل جلب version.json، اعتبر الـ commit نفسه تحديث
+            return {version: msg.trim(), build: Date.now(), notes: msg, files: null, _sourceBase: GITHUB_RAW_BASE, _githubSha: sha, _commitMsg: msg};
+          }
+        }
+      }
+    }catch(e){ clearTimeout(t); console.log('[OTA] GitHub check fail', e.message); }
+    return null;
+  }
+
   async function checkForUpdate(manual=false){
     const now = Date.now();
     if(!manual && now - _lastCheck < 30000) return null; // debounce 30s
@@ -248,6 +310,26 @@
     }
     const stored = getStoredVersion();
     const ignore = (()=>{ try{ return localStorage.getItem(STORAGE_KEY_IGNORE); }catch(e){ return null; } })();
+    // 1) فحص GitHub commits أولاً (عبر الإنترنت حتى لو اللابتوب مطفي)
+    try{
+      const ghData = await checkGitHubUpdates();
+      if(ghData){
+        const cmp = compareVersions(ghData.version, stored);
+        // لو حتى نفس النسخة لكن commit جديد مختلف، اعتبره تحديث
+        const isNewCommit = ghData._githubSha && ghData._githubSha !== (()=>{ try{ return localStorage.getItem(STORAGE_GITHUB_SHA);}catch(e){return null;} })();
+        if(cmp > 0 || isNewCommit){
+          if(ignore && ignore === ghData.version && !manual){
+            console.log('[OTA] تم تجاهل هذا الإصدار GitHub');
+          } else {
+            _pendingData = ghData;
+            showBanner(ghData);
+            if(manual) toast('تحديث جديد من GitHub: ' + ghData._commitMsg);
+            return ghData;
+          }
+        }
+      }
+    }catch(e){ console.log('[OTA] GitHub skip', e.message); }
+
     const urls = getCheckUrls();
     let lastErr = null;
     for(const url of urls){
@@ -317,6 +399,7 @@
         await applyViaFiles(base, verData);
       }
       setStoredVersion(verData.version);
+      if(verData._githubSha){ try{ localStorage.setItem(STORAGE_GITHUB_SHA, verData._githubSha); }catch(e){} }
       try{ localStorage.removeItem(STORAGE_KEY_IGNORE); }catch(e){}
       showProgress(100, 'تم التحديث ✓ سيتم إعادة التشغيل');
       toast('تم التحديث إلى ' + verData.version + ' ✓');

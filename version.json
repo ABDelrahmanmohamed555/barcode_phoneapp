@@ -1,8 +1,8 @@
 {
-  "version": "1.0.1",
-  "build": 3,
-  "date": "2026-09-08T15:37:24",
-  "notes": "دعم التحديث عبر الإنترنت GitHub",
+  "version": "1.0.2",
+  "build": 4,
+  "date": "2026-09-08T15:52:32",
+  "notes": "دعم التحديث عبر الإنترنت Cloudflare",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
@@ -10,10 +10,11 @@
     "app.js": "491b4f4c317cb6beea9e93cbe497848e5dba56ca4ba5adfd7eb3d81a83f2afb9",
     "style.css": "4351f20b2d0bf7c68ad02e5315373a1c08b5785f0c76f9895187bc60334c77c8",
     "manifest.json": "192815e2a868333b016448f6d38e2aad4211cd3838fa3b8207902b482808850d",
-    "updater.js": "9ecf3ea907663e1c55497444e8a4eaffcc654ec38a2299364e9cd286ff7bb990",
+    "updater.js": "4ff39a5baf6ebb9cc8febf6ba19757f1b63f964b47435561a3aa59e98b86458d",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf"
   },
   "changelog": [
+    "1.0.2 - دعم التحديث عبر الإنترنت Cloudflare (2026-09-08)",
     "1.0.1 - دعم التحديث عبر الإنترنت GitHub (2026-09-08)",
     "1.0.1 - تحديث تلقائي للسيرفر - اكتشاف IP بدون إدخال (2026-09-08)",
     "الإصدار الأول"

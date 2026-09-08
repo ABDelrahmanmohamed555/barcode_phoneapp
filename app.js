@@ -81,7 +81,33 @@ function _saveLocal(){
   try{ localStorage.setItem('prot_products', JSON.stringify(products)); }catch(e){}
 }
 
-// --- مزامنة حقيقية + محلية ---
+// --- مزامنة حقيقية + محلية + عبر الإنترنت GitHub ---
+const GITHUB_PRODUCTS_RAW = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main/products.json';
+const GITHUB_PRODUCTS_FALLBACK = 'https://files.catbox.moe/87yk0c.json'.replace('87yk0c.json','products.json'); // سيتم رفعه مع version
+
+async function syncFromGitHub(){
+  // جلب products.json من GitHub Raw (يعمل عبر الإنترنت حتى لو اللابتوب مطفي بعد push)
+  try{
+    const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 7000);
+    const r = await fetch(GITHUB_PRODUCTS_RAW + '?_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal});
+    clearTimeout(t);
+    if(!r.ok) throw new Error(r.status);
+    const data = await r.json();
+    if(Array.isArray(data) && data.length>0){
+      if(JSON.stringify(data) !== JSON.stringify(products)){
+        products = data;
+        _saveLocal();
+        renderUserTable(); renderPricingTable();
+        const tb=document.getElementById('tableBody'); if(tb) renderTable();
+      }
+      const badge=document.getElementById('syncStatus');
+      if(badge){ badge.textContent=`سحابي ✓ ${products.length}`; badge.style.color='#2d8a4e'; }
+      console.log(`✓ مزامنة GitHub: ${products.length} منتج`);
+      return true;
+    }
+  }catch(e){ console.log('GitHub sync fail', e.message); }
+  return false;
+}
 async function syncFromLocalFile(){
   try{
     const r = await fetch('products.json', {cache:'no-store'});
@@ -108,42 +134,60 @@ async function syncFromApi(){
     await syncFromLocalFile();
     return;
   }
-  try{
-    const r = await fetch(`${getApiBase()}/api/products`);
-    if(!r.ok) throw new Error(r.status);
-    const data = await r.json();
-    if(Array.isArray(data) && data.length>0){
-      products = data;
-      console.log(`✓ تمت المزامنة: ${products.length} منتج من ${API_BASE}`);
-      // حدث الملف المحلي أيضاً (للبرمجة بدون شبكة)
-      renderUserTable(); renderPricingTable();
-      const tb=document.getElementById('tableBody'); if(tb) renderTable();
-      const badge=document.getElementById('syncStatus');
-      if(badge){ badge.textContent=`مزامن ✓ ${products.length}`; badge.style.color='#2d8a4e'; }
-      return;
-    }
-  }catch(e){
-    console.log('API غير متاح، محاولة الملف المحلي', e.message);
-    if(await syncFromLocalFile()) return;
-    const badge=document.getElementById('syncStatus');
-    if(badge){ badge.textContent='محلي (API غير متصل)'; badge.style.color='#c8943a'; }
+  const bases = [];
+  const localBase = getApiBase();
+  if(localBase) bases.push(localBase);
+  // عبر الإنترنت Cloudflare (يعمل من 4G)
+  const PUBLIC_CF = 'https://mileage-officially-narrow-oldest.trycloudflare.com';
+  if(!bases.includes(PUBLIC_CF)) bases.push(PUBLIC_CF);
+  // جرب كل bases
+  for(const base of bases){
+    try{
+      const r = await fetch(`${base}/api/products`);
+      if(!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      if(Array.isArray(data) && data.length>0){
+        products = data;
+        _saveLocal();
+        console.log(`✓ تمت المزامنة: ${products.length} منتج من ${base}`);
+        renderUserTable(); renderPricingTable();
+        const tb=document.getElementById('tableBody'); if(tb) renderTable();
+        const badge=document.getElementById('syncStatus');
+        if(badge){ badge.textContent=`مزامن ✓ ${products.length}`; badge.style.color='#2d8a4e'; }
+        return;
+      }
+    }catch(e){ console.log('API', base, 'غير متاح', e.message); }
   }
+  // 2) حاول GitHub عبر الإنترنت (يعمل حتى لو اللابتوب مطفي بعد push)
+  if(await syncFromGitHub()) return;
+  // 3) fallback محلي
+  if(await syncFromLocalFile()) return;
+  const badge=document.getElementById('syncStatus');
+  if(badge){ badge.textContent='غير متصل - محلي'; badge.style.color='#c8943a'; }
 }
 async function apiPostProduct(prod){
   if(!useApi) return null;
-  try{
-    const r=await fetch(`${getApiBase()}/api/products`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(prod)});
-    if(!r.ok) throw new Error(await r.text());
-    return await r.json();
-  }catch(e){ console.log('POST fail',e); return null; }
+  const bases = [getApiBase(), 'https://mileage-officially-narrow-oldest.trycloudflare.com'];
+  for(const base of bases){
+    try{
+      const r=await fetch(`${base}/api/products`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(prod)});
+      if(!r.ok) throw new Error(await r.text());
+      return await r.json();
+    }catch(e){ console.log('POST fail', base, e.message); }
+  }
+  return null;
 }
 async function apiPatchPrice(id, price){
   if(!useApi) return null;
-  try{
-    const r=await fetch(`${getApiBase()}/api/products/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({price})});
-    if(!r.ok) throw new Error(await r.text());
-    return await r.json();
-  }catch(e){ console.log('PATCH fail',e); return null; }
+  const bases = [getApiBase(), 'https://mileage-officially-narrow-oldest.trycloudflare.com'];
+  for(const base of bases){
+    try{
+      const r=await fetch(`${base}/api/products/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({price})});
+      if(!r.ok) throw new Error(await r.text());
+      return await r.json();
+    }catch(e){ console.log('PATCH fail', base, e.message); }
+  }
+  return null;
 }
 
 function genBarcode(){
