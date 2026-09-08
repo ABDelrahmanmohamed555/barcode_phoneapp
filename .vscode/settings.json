@@ -1,0 +1,42 @@
+{
+  "files.exclude": {
+    "**/protPhone/platforms/**": true,
+    "**/protPhone/node_modules/**": true,
+    "**/protPhone/platforms/android/app/build/**": true,
+    "**/protPhone/platforms/android/.gradle/**": true,
+    "**/protPhone/platforms/android/build/**": true,
+    "**/protPhone/platforms/android/CordovaLib/build/**": true,
+    "**/.gradle/**": true,
+    "**/build/**": true,
+    "**/*.apk": true,
+    "**/*.dex": true
+  },
+  "search.exclude": {
+    "**/protPhone/platforms/**": true,
+    "**/protPhone/node_modules/**": true,
+    "**/.gradle/**": true,
+    "**/build/**": true,
+    "**/*.apk": true,
+    "**/*.dex": true,
+    "**/*.jar": true
+  },
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/*/**": true,
+    "**/protPhone/platforms/**": true,
+    "**/protPhone/node_modules/**": true,
+    "**/protPhone/platforms/android/.gradle/**": true,
+    "**/protPhone/platforms/android/app/build/**": true,
+    "**/protPhone/platforms/android/build/**": true,
+    "**/protPhone/platforms/android/CordovaLib/build/**": true,
+    "**/.gradle/**": true,
+    "**/build/**": true,
+    "**/protPhone/www/icon.png": true
+  },
+  "explorer.excludeGitIgnore": true,
+  "git.autoRepositoryDetection": "openEditorsAndWorkspace",
+  "files.hotExit": "off",
+  "editor.largeFileOptimizations": true,
+  "typescript.tsserver.experimental.enableProjectDiagnostics": false
+}

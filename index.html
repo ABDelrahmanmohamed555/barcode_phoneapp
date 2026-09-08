@@ -8,6 +8,8 @@
 <link rel="apple-touch-icon" href="icon.png"/>
 <link rel="manifest" href="manifest.json"/>
 <link rel="stylesheet" href="style.css"/>
+<script src="updater.js"></script>
+<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js").catch(()=>{});}</script>
 </head>
 <body>
 <!-- Splash - يظهر عند فتح التطبيق من الأيقونة -->
@@ -40,14 +42,14 @@
     </div>
   </div>
   <div class="toolbar">
-    <span class="user" id="userLabel">المستخدم: admin</span>
     <span id="clock">--:--</span>
     <span id="dateLabel">--/--/--</span>
   </div>
   <div style="text-align:center;padding:6px;font-size:11px;color:#9e9e9e;background:#151b23;border-bottom:1px solid #2d3543">
     <span id="syncStatus">جاري المزامنة...</span>
     <button onclick="syncFromApi()" style="margin-right:8px;padding:2px 8px;font-size:11px;background:#c8943a;color:#fff;border:none;border-radius:4px">↻ مزامنة</button>
-    <span style="font-size:10px;color:#6c7a91">API: <span id="apiUrl"></span></span>
+    <button onclick="checkForUpdate()" style="margin-right:4px;padding:2px 8px;font-size:11px;background:#2d8a4e;color:#fff;border:none;border-radius:4px">⬇ تحديث</button>
+    <span style="font-size:10px;color:#6c7a91">API: <span id="apiUrl"></span> | v<span id="otaVerLabel">1.0.0</span></span>
   </div>
 
   <!-- ADMIN VIEW - اضافة منتج فقط -->
@@ -214,5 +216,13 @@ window.addEventListener('load', ()=>{
 });
 </script>
 <script src="app.js"></script>
+<script>
+// اعرض نسخة OTA الحالية + حدّثها عند التحميل
+try{
+  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '1.0.0';
+  const el = document.getElementById('otaVerLabel');
+  if(el) el.textContent = _v;
+}catch(e){}
+</script>
 </body>
 </html>

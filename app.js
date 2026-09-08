@@ -1,16 +1,65 @@
 // phone app/app.js — منطق تجريبي مطابق لـ prot/main.py + مزامنة حقيقية مع prot/db/products.db
-const API_BASE = (() => {
-  // لو مفتوح عبر file:// (hostname فاضي) استخدم 127.0.0.1، أو IP محفوظ في localStorage
-  const saved = localStorage.getItem('prot_api_base');
-  if(saved) return saved;
-  const host = location.hostname;
-  if(!host || host==='') return 'http://127.0.0.1:5000';
-  return `http://${host}:5000`;
-})();
+function getApiBase(){
+  try{
+    const saved = localStorage.getItem('prot_api_base');
+    if(saved) return saved.replace(/\/+$/,'');
+    const host = location.hostname;
+    if(!host || host==='') return 'http://127.0.0.1:5000';
+    return `http://${host}:5000`;
+  }catch(e){ return 'http://127.0.0.1:5000'; }
+}
+const API_BASE = getApiBase();
 let useApi = true;
 function setApiBase(url){
   localStorage.setItem('prot_api_base', url);
   location.reload();
+}
+// اكتشاف تلقائي للسيرفر لو file:// وبدون إعداد سابق (يستخدم نفس منطق updater.js)
+async function autoDiscoverApiBase(){
+  try{
+    if(localStorage.getItem('prot_api_base')) return localStorage.getItem('prot_api_base');
+    if(location.hostname && location.hostname!=='') return null;
+    // حاول WebRTC لاستنتاج الشبكة
+    let subnet = null;
+    try{
+      subnet = await new Promise(res=>{
+        try{
+          const pc=new RTCPeerConnection({iceServers:[]});
+          pc.createDataChannel('');
+          pc.createOffer().then(o=> pc.setLocalDescription(o)).catch(()=> res(null));
+          let done=false;
+          pc.onicecandidate=e=>{
+            if(done||!e||!e.candidate||!e.candidate.candidate) return;
+            const m=e.candidate.candidate.match(/(\d+\.\d+\.\d+)\.\d+/);
+            if(m){ done=true; try{pc.close();}catch(_){} res(m[1]+'.'); }
+          };
+          setTimeout(()=> res(null), 1200);
+        }catch(_){ res(null); }
+      });
+    }catch(_){}
+    const prefixes = subnet ? [subnet] : [];
+    for(const c of ['192.168.1.','192.168.0.','192.168.43.','192.168.137.','10.0.2.','10.42.0.']) if(!prefixes.includes(c)) prefixes.push(c);
+    const tryBase = async (base)=>{
+      const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),700);
+      try{ const r=await fetch(base+'/api/app_version?_t='+Date.now(),{cache:'no-store',signal:ctrl.signal}); clearTimeout(t); return r.ok; }catch(_){ clearTimeout(t); return false; }
+    };
+    for(const pref of prefixes){
+      const order=[1,15,100,42,101,2,10,20];
+      const rest=[]; for(let i=1;i<=50;i++) if(!order.includes(i)) rest.push(i);
+      const all=[...order, ...rest];
+      for(let s=0;s<all.length;s+=15){
+        const batch=all.slice(s,s+15);
+        const res=await Promise.all(batch.map(async ip=> (await tryBase(`http://${pref}${ip}:5000`)) ? `http://${pref}${ip}:5000` : null));
+        const found=res.find(x=>x);
+        if(found){ try{ localStorage.setItem('prot_api_base', found); }catch(_){} console.log('[API] اكتشاف تلقائي',found); return found; }
+      }
+    }
+  }catch(_){}
+  return null;
+}
+// شغل الاكتشاف في الخلفية لو file://
+if(!location.hostname || location.hostname===''){
+  setTimeout(()=>{ autoDiscoverApiBase().then(found=>{ if(found && found!==API_BASE) location.reload(); }); }, 2000);
 }
 const sample = [
   {id:17, name:"مفتاح انجليزي 10 بوصة", barcode:"8801000000011", category:"أجهزة", price:0, stock:5},
@@ -60,7 +109,7 @@ async function syncFromApi(){
     return;
   }
   try{
-    const r = await fetch(`${API_BASE}/api/products`);
+    const r = await fetch(`${getApiBase()}/api/products`);
     if(!r.ok) throw new Error(r.status);
     const data = await r.json();
     if(Array.isArray(data) && data.length>0){
@@ -83,7 +132,7 @@ async function syncFromApi(){
 async function apiPostProduct(prod){
   if(!useApi) return null;
   try{
-    const r=await fetch(`${API_BASE}/api/products`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(prod)});
+    const r=await fetch(`${getApiBase()}/api/products`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(prod)});
     if(!r.ok) throw new Error(await r.text());
     return await r.json();
   }catch(e){ console.log('POST fail',e); return null; }
@@ -91,7 +140,7 @@ async function apiPostProduct(prod){
 async function apiPatchPrice(id, price){
   if(!useApi) return null;
   try{
-    const r=await fetch(`${API_BASE}/api/products/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({price})});
+    const r=await fetch(`${getApiBase()}/api/products/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({price})});
     if(!r.ok) throw new Error(await r.text());
     return await r.json();
   }catch(e){ console.log('PATCH fail',e); return null; }
@@ -190,7 +239,8 @@ function switchRole(r){
   document.getElementById('tabUser').classList.toggle('active', r==='employee');
   const tabPricing=document.getElementById('tabPricing');
   if(tabPricing) tabPricing.classList.toggle('active', r==='pricing');
-  document.getElementById('userLabel').textContent='المستخدم: '+(r==='admin'?'admin':'user');
+  const ul=document.getElementById('userLabel');
+  if(ul) ul.textContent='المستخدم: '+(r==='admin'?'admin':'user');
   // الأسماء الجديدة: اضافة منتج / المنتجات / تسعير 
   const tabAdmin=document.getElementById('tabAdmin');
   const tabUser=document.getElementById('tabUser');
@@ -370,6 +420,35 @@ const scanEl=document.getElementById('scan');
 if(scanEl) scanEl.addEventListener('keydown', e=>{ if(e.key==='Enter') scanEnter(); });
 genBarcode(); renderTable(); renderUserTable(); renderPricingTable(); renderCart();
 // مزامنة مع قاعدة البيانات الحقيقية + المحلية
-try{ document.getElementById('apiUrl').textContent=API_BASE; }catch(e){}
+try{ document.getElementById('apiUrl').textContent=getApiBase(); }catch(e){}
 syncFromLocalFile().then(()=> syncFromApi());
+// حدث عنوان الـ API في الواجهة بعد الاكتشاف التلقائي
+setTimeout(()=>{ try{ const el=document.getElementById('apiUrl'); if(el) el.textContent=getApiBase(); }catch(e){} }, 3500);
 setInterval(()=>{ syncFromLocalFile(); syncFromApi(); }, 5000); // تحديث كل 5 ثواني (محلي + شبكة)
+
+// يتعرف على ريزولوشن الشاشة ويأخذ حجمها فور التشغيل (مع debounce لتجنب التهنيج في VS Code)
+let _lastW=0,_lastH=0,_screenTimer=null;
+function applyScreenSize(){
+  const w=window.innerWidth, h=window.innerHeight;
+  if(w===_lastW && h===_lastH) return;
+  _lastW=w; _lastH=h;
+  const phone=document.querySelector('.phone');
+  if(!phone) return;
+  const sw=window.screen?window.screen.width:w, sh=window.screen?window.screen.height:h;
+  const dpr=window.devicePixelRatio||1;
+  phone.style.width=w+'px';
+  phone.style.height=h+'px';
+  phone.style.maxWidth='none';
+  phone.style.minHeight=h+'px';
+  document.documentElement.style.setProperty('--screen-w', w+'px');
+  document.documentElement.style.setProperty('--screen-h', h+'px');
+}
+function _debouncedApply(){
+  if(_screenTimer) clearTimeout(_screenTimer);
+  _screenTimer=setTimeout(applyScreenSize, 120);
+}
+window.addEventListener('load', applyScreenSize);
+window.addEventListener('resize', _debouncedApply);
+window.addEventListener('orientationchange', ()=> setTimeout(applyScreenSize, 250));
+if(window.visualViewport) window.visualViewport.addEventListener('resize', _debouncedApply);
+applyScreenSize();

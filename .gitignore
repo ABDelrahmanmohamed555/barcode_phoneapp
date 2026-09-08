@@ -1,0 +1,27 @@
+protPhone/
+node_modules/
+platforms/
+plugins/
+www/
+# Cordova / Android build artifacts - تسبب تهنيج VS Code لو تُركت
+protPhone/platforms/
+protPhone/node_modules/
+protPhone/platforms/android/build/
+protPhone/platforms/android/app/build/
+protPhone/platforms/android/.gradle/
+protPhone/platforms/android/CordovaLib/build/
+protPhone/www/icon.png
+**/*.apk
+**/*.dex
+**/*.jar
+.gradle/
+build/
+# OS
+.DS_Store
+Thumbs.db
+# VS Code cache
+.vscode/.ropeproject
+*.code-workspace
+# Large assets
+*.apk
+*.aab
