@@ -355,14 +355,24 @@ async function syncFromApi(){
     await syncFromLocalFile();
     return;
   }
-  // 0) Supabase أولاً (لحظي)
+  // 0) Supabase أولاً (لحظي) — لكن لو فاضي والمحلي فيه بيانات، لا تعتبره موثوق
   if(window.SupabaseSync && SupabaseSync.isConfigured()){
     try{
       const data = await SupabaseSync.getProducts();
       if(Array.isArray(data)){
-        if(data.length>0) _applyProducts(data, 'Supabase');
-        _setBadge(data.length);
-        if(_supaRealtimeActive) return;
+        if(data.length===0 && products.length>0){
+          console.log('Supabase empty but local has '+products.length+' — fallback to GitHub');
+          // لا تعمل return، جرب GitHub و Local API
+        } else {
+          if(data.length>0) _applyProducts(data, 'Supabase');
+          _setBadge(data.length);
+          if(_supaRealtimeActive && data.length>0) return;
+          if(data.length>0) return;
+          if(data.length===0 && products.length===0){
+            if(_supaRealtimeActive) return;
+            return;
+          }
+        }
       }
     }catch(e){ console.log('Supabase fail', e.message); }
   }
@@ -373,7 +383,7 @@ async function syncFromApi(){
   // رابط Cloudflare اختياري من الإعدادات (لا تستخدم الرابط المنتهي افتراضياً)
   const cfFromStorage = (()=>{ try{ return localStorage.getItem('public_cf_url')||''; }catch(e){return '';} })();
   if(cfFromStorage && !bases.includes(cfFromStorage)) bases.push(cfFromStorage);
-  // جرب Local API
+  // جرب Local API — لو فاضي والمحلي فيه بيانات، جرب GitHub
   for(const base of bases){
     try{
       const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 2500);
@@ -381,7 +391,11 @@ async function syncFromApi(){
       clearTimeout(t);
       if(!r.ok) throw new Error(r.status);
       const data = await r.json();
-      if(Array.isArray(data) && data.length>=0){
+      if(Array.isArray(data)){
+        if(data.length===0 && products.length>0){
+          console.log('Local API empty but local has '+products.length+' — try GitHub');
+          continue;
+        }
         if(data.length>0) _applyProducts(data, base);
         _setBadge(data.length);
         console.log(`✓ تمت المزامنة: ${data.length} منتج من ${base}`);
