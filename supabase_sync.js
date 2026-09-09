@@ -51,13 +51,45 @@
   }
 
   async function addProduct(prod){
-    const data = await supaFetch(TABLE, {method:'POST', body: JSON.stringify(prod)});
-    return data && data[0] ? data[0] : null;
+    // upsert بالـ barcode لمنع التكرار والرجوع — أي تعديل يدمج لا يستبدل
+    try{
+      const cfg = getConfig();
+      if(!cfg) throw new Error('Supabase not configured');
+      const headers = {
+        'apikey': cfg.key,
+        'Authorization': `Bearer ${cfg.key}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=representation'
+      };
+      const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 8000);
+      const r = await fetch(`${cfg.url}/rest/v1/${TABLE}?on_conflict=barcode`, {method:'POST', headers, body: JSON.stringify(prod), signal: ctrl.signal});
+      clearTimeout(t);
+      if(r.ok){
+        const data = await r.json().catch(()=>null);
+        return data && data[0] ? data[0] : null;
+      }
+      throw new Error(await r.text());
+    }catch(e){
+      // fallback عادي
+      const data = await supaFetch(TABLE, {method:'POST', body: JSON.stringify(prod)});
+      return data && data[0] ? data[0] : null;
+    }
   }
 
   async function updateProduct(id, patch){
-    const data = await supaFetch(`${TABLE}?id=eq.${id}`, {method:'PATCH', body: JSON.stringify(patch)});
-    return data && data[0] ? data[0] : null;
+    // حاول التحديث بالـ id، ولو فشل جرب بالـ barcode
+    try{
+      const data = await supaFetch(`${TABLE}?id=eq.${id}`, {method:'PATCH', body: JSON.stringify(patch)});
+      if(data && data[0]) return data[0];
+    }catch(e){}
+    // fallback بالـ barcode لو متاح في patch
+    if(patch.barcode){
+      try{
+        const data = await supaFetch(`${TABLE}?barcode=eq.${encodeURIComponent(patch.barcode)}`, {method:'PATCH', body: JSON.stringify(patch)});
+        return data && data[0] ? data[0] : null;
+      }catch(e){}
+    }
+    return null;
   }
 
   async function deleteProduct(id){

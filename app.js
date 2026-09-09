@@ -301,6 +301,9 @@ async function syncFromApi(){
   }
 }
 async function apiPostProduct(prod){
+  // أضف طوابع زمنية لمنع الرجوع
+  if(!prod.created_at) prod.created_at = new Date().toISOString().slice(0,19).replace('T',' ');
+  if(!prod.updated_at) prod.updated_at = prod.created_at;
   // جرب Supabase أولاً
   if(window.SupabaseSync && SupabaseSync.isConfigured()){
     try{
@@ -322,9 +325,10 @@ async function apiPostProduct(prod){
   return null;
 }
 async function apiPatchPrice(id, price){
+  const now = new Date().toISOString().slice(0,19).replace('T',' ');
   if(window.SupabaseSync && SupabaseSync.isConfigured()){
     try{
-      const saved = await SupabaseSync.updateProduct(id, {price});
+      const saved = await SupabaseSync.updateProduct(id, {price, updated_at: now});
       if(saved) return saved;
     }catch(e){ console.log('Supabase PATCH fail', e.message); }
   }
@@ -393,7 +397,8 @@ async function saveProduct(){
   }
   // fallback محلي + GitHub
   const id=Math.max(0,...products.map(p=>p.id))+1;
-  const newProd={id,name,barcode:barcode||"880"+Date.now(),category:cat,price,stock,description:desc, created_at: new Date().toISOString(), updated_at: new Date().toISOString()};
+  const nowStr = new Date().toISOString().slice(0,19).replace('T',' ');
+  const newProd={id,name,barcode:barcode||"880"+Date.now(),category:cat,price,stock,description:desc, created_at: nowStr, updated_at: nowStr};
   products.unshift(newProd);
   _saveLocal();
   renderUserTable();
