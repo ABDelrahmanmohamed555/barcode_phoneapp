@@ -244,9 +244,9 @@
     if(!msg) return false;
     const first = msg.split('\n')[0].trim();
     const pats = [
-      /^\s*update\s*[:\-]?\s*\d+\s*$/i,
-      /^\s*update\s+\d+\s*$/i,
-      /^\s*v\d+\.\d+.*$/i,
+      /^\s*update\s*[:\-]?\s*\d+(\.\d+)*\s*$/i,
+      /^\s*update\s+\d+(\.\d+)*\s*$/i,
+      /^\s*v\d+(\.\d+)*.*$/i,
       /^\s*version\s*[:\-]?\s*\d+.*$/i
     ];
     for(const p of pats) if(p.test(first)) return true;
@@ -255,6 +255,18 @@
       if(rest && /^\d/.test(rest)) return true;
     }
     return false;
+  }
+  function extractVersionFromCommit(msg){
+    // يأخذ الرقم بعد update → هو رقم الإصدار
+    if(!msg) return null;
+    const first = msg.split('\n')[0].trim();
+    let m = first.match(/^\s*update\s*[:\-]?\s*(\d+(?:\.\d+)*)/i);
+    if(m) return m[1];
+    m = first.match(/^\s*v(\d+(?:\.\d+)*)/i);
+    if(m) return m[1];
+    m = first.match(/^\s*version\s*[:\-]?\s*(\d+(?:\.\d+)*)/i);
+    if(m) return m[1];
+    return null;
   }
   async function checkGitHubUpdates(){
     const ctrl = new AbortController();
@@ -272,19 +284,25 @@
           const sha = c.sha;
           if(sha === lastSha) return null; // نفس آخر تحديث تم تجاهله/تثبيته
           // وجد تحديث جديد
-          console.log('[OTA] وجد commit تحديث', sha.slice(0,7), msg);
+          const verFromMsg = extractVersionFromCommit(msg);
+          console.log('[OTA] وجد commit تحديث', sha.slice(0,7), msg, '→', verFromMsg);
           // حاول جلب version.json من هذا الـ commit عبر raw
           try{
             const rawUrl = `${GITHUB_RAW_BASE}/version.json?_t=${Date.now()}`;
-            // استخدم fetchVersion للتحقق
             const verData = await fetchVersion(rawUrl);
+            // لو version.json لم يُحدَّث، استخدم الرقم من commit كـ version
+            if(verFromMsg && compareVersions(verFromMsg, verData.version) > 0){
+              verData.version = verFromMsg;
+            }
             verData._sourceBase = GITHUB_RAW_BASE;
             verData._githubSha = sha;
             verData._commitMsg = msg;
+            if(verFromMsg) verData.version = verFromMsg;
             return verData;
           }catch(e){
-            // لو فشل جلب version.json، اعتبر الـ commit نفسه تحديث
-            return {version: msg.trim(), build: Date.now(), notes: msg, files: null, _sourceBase: GITHUB_RAW_BASE, _githubSha: sha, _commitMsg: msg};
+            // لو فشل جلب version.json، استخدم الرقم من commit كـ version
+            const v = verFromMsg || msg.trim();
+            return {version: v, build: Date.now(), notes: msg, files: null, _sourceBase: GITHUB_RAW_BASE, _githubSha: sha, _commitMsg: msg};
           }
         }
       }

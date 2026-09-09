@@ -1,8 +1,8 @@
 {
-  "version": "1.0.7",
-  "build": 11,
-  "date": "2026-09-09T11:58:46",
-  "notes": "حل جذري نهائي - مزامنة لحظية عبر GitHub بدون سيرفر",
+  "version": "1.7",
+  "build": 12,
+  "date": "2026-09-09T12:06:16",
+  "notes": "الرقم بعد update هو الإصدار",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
@@ -10,10 +10,11 @@
     "app.js": "f86c1ea7eeca35acddd20a0d135074fa6f560b866cefcbc8a9d2b024ee3a9679",
     "style.css": "4351f20b2d0bf7c68ad02e5315373a1c08b5785f0c76f9895187bc60334c77c8",
     "manifest.json": "192815e2a868333b016448f6d38e2aad4211cd3838fa3b8207902b482808850d",
-    "updater.js": "cb9b94e9d38450a3a61d7d79b451a440ee405edf60616b5133ef4deec70cd0c3",
+    "updater.js": "777b9cae5a3f2cc1471021fde2fddb84be95fa778bc3f417446aa30d32a1e4d4",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf"
   },
   "changelog": [
+    "1.7 - الرقم بعد update هو الإصدار (2026-09-09)",
     "1.0.7 - حل جذري نهائي - مزامنة لحظية عبر GitHub بدون سيرفر (2026-09-09)",
     "1.0.7 - حل جذري نهائي - مزامنة لحظية عبر GitHub بدون سيرفر (2026-09-09)",
     "1.0.6 - حل جذري مزامنة منتجات GitHub - لحظي عبر الإنترنت (2026-09-08)",
