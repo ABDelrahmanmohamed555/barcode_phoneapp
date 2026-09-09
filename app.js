@@ -91,6 +91,18 @@ function b64DecodeUtf8(b64){ return decodeURIComponent(escape(atob(b64))); }
 let _githubSha = null;
 let _lastSyncTime = 0;
 let _supaRealtimeActive = false;
+let _lastBadgeCount = -1;
+let _syncFailCount = 0;
+function _setBadge(count){
+  const badge=document.getElementById('syncStatus');
+  if(!badge) return;
+  // ثبت اللون والنص — لا يتغير بين محلي/سحابي لمنع الوميض
+  if(_lastBadgeCount === count) return;
+  _lastBadgeCount = count;
+  badge.textContent=`مزامن ✓ ${count}`;
+  badge.style.color='#3a86c8'; // أزرق ثابت
+  _syncFailCount = 0;
+}
 
 function _applyProducts(newData, source){
   if(!Array.isArray(newData)) return false;
@@ -181,9 +193,8 @@ async function syncFromGitHub(){
       const content = b64DecodeUtf8(j.content.replace(/\n/g,''));
       const data = JSON.parse(content);
       if(Array.isArray(data)){
-        const changed = _applyProducts(data, `GitHub API ${token?'✓':'anon'} sha:${_githubSha?.slice(0,7)}`);
-        const badge=document.getElementById('syncStatus');
-        if(badge){ badge.textContent=`سحابي GitHub ✓ ${data.length}`; badge.style.color='#2d8a4e'; }
+        _applyProducts(data, `GitHub API ${token?'✓':'anon'} sha:${_githubSha?.slice(0,7)}`);
+        _setBadge(data.length);
         return true;
       }
     } else if(r.status===404){
@@ -200,8 +211,7 @@ async function syncFromGitHub(){
       const data = await r.json();
       if(Array.isArray(data)){
         _applyProducts(data, `GitHub Raw`);
-        const badge=document.getElementById('syncStatus');
-        if(badge){ badge.textContent=`سحابي GitHub Raw ✓ ${data.length}`; badge.style.color='#2d8a4e'; }
+        _setBadge(data.length);
         return true;
       }
     }catch(e){ console.log('GitHub Raw fail', e.message); }
@@ -237,9 +247,8 @@ async function syncFromLocalFile(){
     if(!r.ok) throw new Error(r.status);
     const data = await r.json();
     if(Array.isArray(data)){
-      const changed = _applyProducts(data, 'محلي');
-      const badge=document.getElementById('syncStatus');
-      if(badge){ badge.textContent=`محلي ✓ ${data.length}`; badge.style.color='#3a86c8'; }
+      _applyProducts(data, 'محلي');
+      _setBadge(data.length);
       return true;
     }
   }catch(e){}
@@ -256,9 +265,8 @@ async function syncFromApi(){
       const data = await SupabaseSync.getProducts();
       if(Array.isArray(data)){
         if(data.length>0) _applyProducts(data, 'Supabase');
-        const badge=document.getElementById('syncStatus');
-        if(badge){ badge.textContent=`سحابي Supabase ✓ ${data.length}`; badge.style.color='#2d8a4e'; }
-        if(_supaRealtimeActive) return; // لو Realtime شغال لا حاجة لمحاولة الباقي
+        _setBadge(data.length);
+        if(_supaRealtimeActive) return;
       }
     }catch(e){ console.log('Supabase fail', e.message); }
   }
@@ -279,9 +287,8 @@ async function syncFromApi(){
       const data = await r.json();
       if(Array.isArray(data) && data.length>=0){
         if(data.length>0) _applyProducts(data, base);
+        _setBadge(data.length);
         console.log(`✓ تمت المزامنة: ${data.length} منتج من ${base}`);
-        const badge=document.getElementById('syncStatus');
-        if(badge){ badge.textContent=`مزامن ✓ ${data.length}`; badge.style.color='#2d8a4e'; }
         return;
       }
     }catch(e){ console.log('API', base, 'غير متاح', e.message); }
@@ -290,6 +297,8 @@ async function syncFromApi(){
   if(await syncFromGitHub()) return;
   // 3) fallback محلي
   if(await syncFromLocalFile()) return;
+  _syncFailCount++;
+  if(_syncFailCount < 2) return; // لا ترمش — انتظر فشلين متتاليين
   const badge=document.getElementById('syncStatus');
   if(badge){
     if(window.SupabaseSync && !SupabaseSync.isConfigured()){
@@ -353,8 +362,7 @@ function initSupabaseRealtime(){
     const ok = SupabaseSync.subscribeRealtime((newData)=>{
       console.log('[Supabase RT] onChange', newData.length);
       _applyProducts(newData, 'Supabase RT');
-      const badge=document.getElementById('syncStatus');
-      if(badge){ badge.textContent=`سحابي لحظي ✓ ${newData.length}`; badge.style.color='#2d8a4e'; }
+      _setBadge(newData.length);
     });
     if(ok){
       _supaRealtimeActive = true;
@@ -662,8 +670,8 @@ try{ document.getElementById('apiUrl').textContent=getApiBase(); }catch(e){}
 syncFromLocalFile().then(()=> syncFromApi());
 initSupabaseRealtime();
 setTimeout(()=>{ try{ const el=document.getElementById('apiUrl'); if(el) el.textContent=getApiBase(); }catch(e){} }, 3500);
-// مزامنة لحظية كل 2.5 ثانية + Supabase Realtime
-setInterval(()=>{ syncFromLocalFile(); syncFromApi(); }, 2500);
+// مزامنة في الخلفية كل 4 ثواني — بدون وميض (المزامنة تدمج فقط لو فيه جديد)
+setInterval(()=>{ syncFromApi(); }, 4000);
 setInterval(()=>{ if(window.SupabaseSync && SupabaseSync.isConfigured() && !_supaRealtimeActive) initSupabaseRealtime(); }, 8000);
 
 // يتعرف على ريزولوشن الشاشة
