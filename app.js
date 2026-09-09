@@ -1,4 +1,4 @@
-// phone app/app.js — منطق تجريبي مطابق لـ prot/main.py + مزامنة حقيقية مع prot/db/products.db
+// phone app/app.js — منطق تجريبي مطابق لـ prot/main.py + مزامنة لحظية حقيقية عبر Supabase/GitHub/Local
 function getApiBase(){
   try{
     const saved = localStorage.getItem('prot_api_base');
@@ -19,7 +19,6 @@ async function autoDiscoverApiBase(){
   try{
     if(localStorage.getItem('prot_api_base')) return localStorage.getItem('prot_api_base');
     if(location.hostname && location.hostname!=='') return null;
-    // حاول WebRTC لاستنتاج الشبكة
     let subnet = null;
     try{
       subnet = await new Promise(res=>{
@@ -57,7 +56,6 @@ async function autoDiscoverApiBase(){
   }catch(_){}
   return null;
 }
-// شغل الاكتشاف في الخلفية لو file://
 if(!location.hostname || location.hostname===''){
   setTimeout(()=>{ autoDiscoverApiBase().then(found=>{ if(found && found!==API_BASE) location.reload(); }); }, 2000);
 }
@@ -81,7 +79,7 @@ function _saveLocal(){
   try{ localStorage.setItem('prot_products', JSON.stringify(products)); }catch(e){}
 }
 
-// --- مزامنة حقيقية + محلية + عبر الإنترنت GitHub (جذري) ---
+// --- مزامنة لحظية جذرية: Supabase Realtime + GitHub + Local API ---
 const GITHUB_REPO = 'ABDelrahmanmohamed555/barcode_phoneapp';
 const GITHUB_PRODUCTS_RAW = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/products.json`;
 const GITHUB_PRODUCTS_API = `https://api.github.com/repos/${GITHUB_REPO}/contents/products.json`;
@@ -90,15 +88,40 @@ function getGitHubToken(){ try{ return localStorage.getItem(GITHUB_TOKEN_KEY) ||
 function setGitHubToken(t){ try{ if(t) localStorage.setItem(GITHUB_TOKEN_KEY, t); else localStorage.removeItem(GITHUB_TOKEN_KEY); }catch(e){} }
 function b64EncodeUtf8(str){ return btoa(unescape(encodeURIComponent(str))); }
 function b64DecodeUtf8(b64){ return decodeURIComponent(escape(atob(b64))); }
-let _githubSha = null; // آخر sha للـ products.json
+let _githubSha = null;
+let _lastSyncTime = 0;
+let _supaRealtimeActive = false;
+
+function _applyProducts(newData, source){
+  if(!Array.isArray(newData)) return false;
+  // تطبيع: تأكد من الحقول
+  const normalized = newData.map(p=>({
+    id: p.id,
+    name: p.name||'',
+    barcode: p.barcode||'',
+    category: p.category||'عام',
+    price: parseFloat(p.price)||0,
+    stock: parseInt(p.stock)||0,
+    description: p.description||'',
+    image_path: p.image_path||'',
+    barcode_path: p.barcode_path||'',
+    created_at: p.created_at||'',
+    updated_at: p.updated_at||''
+  }));
+  if(JSON.stringify(normalized) === JSON.stringify(products)) return false;
+  products = normalized;
+  _saveLocal();
+  renderUserTable(); renderPricingTable();
+  const tb=document.getElementById('tableBody'); if(tb) renderTable();
+  console.log(`✓ تحديث ${normalized.length} منتج من ${source}`);
+  return true;
+}
 
 async function syncFromGitHub(){
-  // حل جذري: GitHub هو قاعدة البيانات المشتركة — يعمل حتى لو اللابتوب مطفي
-  // يقرأ مباشرة من Contents API (أحدث من raw) ويدعم الكتابة أيضاً
   const token = getGitHubToken();
-  // 1) حاول Contents API (يدعم حتى المنتجات لحظياً + يعطي sha للكتابة)
+  // 1) Contents API (أحدث، بدون كاش)
   try{
-    const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 6000);
+    const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 7000);
     const headers = {'Accept':'application/vnd.github.v3+json'};
     if(token) headers['Authorization'] = `token ${token}`;
     const r = await fetch(GITHUB_PRODUCTS_API + '?_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal, headers});
@@ -108,48 +131,38 @@ async function syncFromGitHub(){
       _githubSha = j.sha;
       const content = b64DecodeUtf8(j.content.replace(/\n/g,''));
       const data = JSON.parse(content);
-      if(Array.isArray(data) && data.length>=0){
-        if(JSON.stringify(data) !== JSON.stringify(products)){
-          products = data;
-          _saveLocal();
-          renderUserTable(); renderPricingTable();
-          const tb=document.getElementById('tableBody'); if(tb) renderTable();
-        }
+      if(Array.isArray(data)){
+        const changed = _applyProducts(data, `GitHub API ${token?'✓':'anon'} sha:${_githubSha?.slice(0,7)}`);
         const badge=document.getElementById('syncStatus');
-        if(badge){ badge.textContent=`سحابي ✓ ${products.length}`; badge.style.color='#2d8a4e'; }
-        console.log(`✓ مزامنة GitHub API: ${products.length} منتج sha:${_githubSha?.slice(0,7)}`);
+        if(badge){ badge.textContent=`سحابي GitHub ✓ ${data.length}`; badge.style.color='#2d8a4e'; }
         return true;
       }
+    } else if(r.status===404){
+      console.log('GitHub products.json غير موجود - سيُنشأ عند أول دفع');
     }
   }catch(e){ console.log('GitHub API fail', e.message); }
-  // 2) fallback Raw (بدون token، للقراءة فقط)
-  for(const rawUrl of [GITHUB_PRODUCTS_RAW, `https://corsproxy.io/?${encodeURIComponent(GITHUB_PRODUCTS_RAW)}`, `https://api.allorigins.win/raw?url=${encodeURIComponent(GITHUB_PRODUCTS_RAW)}`]){
+  // 2) fallback Raw (مع cache-bust)
+  for(const rawUrl of [GITHUB_PRODUCTS_RAW]){
     try{
-      const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 6000);
-      const r = await fetch(rawUrl + (rawUrl.includes('?')?'&':'?') + '_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal, mode:'cors', credentials:'omit'});
+      const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 7000);
+      const r = await fetch(rawUrl + '?_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal, mode:'cors', credentials:'omit'});
       clearTimeout(t);
       if(!r.ok) throw new Error(r.status);
       const data = await r.json();
-      if(Array.isArray(data) && data.length>=0){
-        if(JSON.stringify(data) !== JSON.stringify(products)){
-          products = data;
-          _saveLocal();
-          renderUserTable(); renderPricingTable();
-          const tb=document.getElementById('tableBody'); if(tb) renderTable();
-        }
+      if(Array.isArray(data)){
+        _applyProducts(data, `GitHub Raw`);
         const badge=document.getElementById('syncStatus');
-        if(badge){ badge.textContent=`سحابي ✓ ${products.length}`; badge.style.color='#2d8a4e'; }
-        console.log(`✓ مزامنة GitHub Raw: ${products.length} منتج via ${rawUrl.slice(0,30)}`);
+        if(badge){ badge.textContent=`سحابي GitHub Raw ✓ ${data.length}`; badge.style.color='#2d8a4e'; }
         return true;
       }
-    }catch(e){ console.log('GitHub Raw fail', rawUrl.slice(0,30), e.message); }
+    }catch(e){ console.log('GitHub Raw fail', e.message); }
   }
   return false;
 }
 async function githubPushProducts(newProducts, message){
   const token = getGitHubToken();
   if(!token){
-    console.log('GitHub push skip: no token');
+    console.log('GitHub push skip: no token - استخدم Supabase أو API المحلي');
     return false;
   }
   try{
@@ -171,23 +184,16 @@ async function githubPushProducts(newProducts, message){
 }
 async function syncFromLocalFile(){
   try{
-    const r = await fetch('products.json', {cache:'no-store'});
+    const r = await fetch('products.json?_t='+Date.now(), {cache:'no-store'});
     if(!r.ok) throw new Error(r.status);
     const data = await r.json();
-    if(Array.isArray(data) && data.length>=0){
-      // فقط لو البيانات مختلفة لتجنب إعادة الرسم الزائدة
-      if(JSON.stringify(data) !== JSON.stringify(products)){
-        products = data;
-        renderUserTable(); renderPricingTable();
-        const tb=document.getElementById('tableBody'); if(tb) renderTable();
-      }
+    if(Array.isArray(data)){
+      const changed = _applyProducts(data, 'محلي');
       const badge=document.getElementById('syncStatus');
-      if(badge){ badge.textContent=`محلي ✓ ${products.length}`; badge.style.color='#3a86c8'; }
+      if(badge){ badge.textContent=`محلي ✓ ${data.length}`; badge.style.color='#3a86c8'; }
       return true;
     }
-  }catch(e){
-    // ملف محلي غير متاح (يعمل بدون http.server)
-  }
+  }catch(e){}
   return false;
 }
 async function syncFromApi(){
@@ -195,58 +201,50 @@ async function syncFromApi(){
     await syncFromLocalFile();
     return;
   }
-  // 0) حل جذري: Supabase أولاً (يعمل عبر الإنترنت بدون سيرفر ولا نفس الشبكة)
+  // 0) Supabase أولاً (لحظي)
   if(window.SupabaseSync && SupabaseSync.isConfigured()){
     try{
       const data = await SupabaseSync.getProducts();
-      if(Array.isArray(data) && data.length>=0){
-        if(data.length>0 && JSON.stringify(data) !== JSON.stringify(products)){
-          products = data;
-          _saveLocal();
-          renderUserTable(); renderPricingTable();
-          const tb=document.getElementById('tableBody'); if(tb) renderTable();
-        }
+      if(Array.isArray(data)){
+        if(data.length>0) _applyProducts(data, 'Supabase');
         const badge=document.getElementById('syncStatus');
         if(badge){ badge.textContent=`سحابي Supabase ✓ ${data.length}`; badge.style.color='#2d8a4e'; }
-        console.log(`✓ Supabase sync: ${data.length}`);
-        return;
+        if(_supaRealtimeActive) return; // لو Realtime شغال لا حاجة لمحاولة الباقي
       }
     }catch(e){ console.log('Supabase fail', e.message); }
   }
+  // لو Supabase غير مهيأ، جرب Local API أولاً (أسرع على نفس الشبكة)
   const bases = [];
   const localBase = getApiBase();
   if(localBase) bases.push(localBase);
-  // عبر الإنترنت Cloudflare (يعمل من 4G)
-  const PUBLIC_CF = 'https://reason-widely-continent-sorry.trycloudflare.com';
-  if(!bases.includes(PUBLIC_CF)) bases.push(PUBLIC_CF);
-  // جرب كل bases بمهلة قصيرة (3s) حتى لا يعلق على 192.168.1.8
+  // رابط Cloudflare اختياري من الإعدادات (لا تستخدم الرابط المنتهي افتراضياً)
+  const cfFromStorage = (()=>{ try{ return localStorage.getItem('public_cf_url')||''; }catch(e){return '';} })();
+  if(cfFromStorage && !bases.includes(cfFromStorage)) bases.push(cfFromStorage);
+  // جرب Local API
   for(const base of bases){
     try{
-      const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 3000);
+      const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 2500);
       const r = await fetch(`${base}/api/products?_t=`+Date.now(), {cache:'no-store', signal: ctrl.signal, mode:'cors', credentials:'omit'});
       clearTimeout(t);
       if(!r.ok) throw new Error(r.status);
       const data = await r.json();
-      if(Array.isArray(data) && data.length>0){
-        products = data;
-        _saveLocal();
-        console.log(`✓ تمت المزامنة: ${products.length} منتج من ${base}`);
-        renderUserTable(); renderPricingTable();
-        const tb=document.getElementById('tableBody'); if(tb) renderTable();
+      if(Array.isArray(data) && data.length>=0){
+        if(data.length>0) _applyProducts(data, base);
+        console.log(`✓ تمت المزامنة: ${data.length} منتج من ${base}`);
         const badge=document.getElementById('syncStatus');
-        if(badge){ badge.textContent=`مزامن ✓ ${products.length}`; badge.style.color='#2d8a4e'; }
+        if(badge){ badge.textContent=`مزامن ✓ ${data.length}`; badge.style.color='#2d8a4e'; }
         return;
       }
     }catch(e){ console.log('API', base, 'غير متاح', e.message); }
   }
-  // 2) حاول GitHub عبر الإنترنت (يعمل حتى لو اللابتوب مطفي بعد push)
+  // 2) GitHub (يعمل عبر الإنترنت حتى لو اللابتوب مطفي)
   if(await syncFromGitHub()) return;
   // 3) fallback محلي
   if(await syncFromLocalFile()) return;
   const badge=document.getElementById('syncStatus');
   if(badge){
     if(window.SupabaseSync && !SupabaseSync.isConfigured()){
-      badge.textContent='api غير متصل - اضغط ⚙ Supabase';
+      badge.textContent='غير متصل - اضغط ⚙ Supabase أو ⚙ GitHub';
     } else {
       badge.textContent='غير متصل - محلي';
     }
@@ -254,14 +252,17 @@ async function syncFromApi(){
   }
 }
 async function apiPostProduct(prod){
-  if(!useApi) return null;
+  // جرب Supabase أولاً
   if(window.SupabaseSync && SupabaseSync.isConfigured()){
     try{
       const saved = await SupabaseSync.addProduct(prod);
       if(saved) return saved;
     }catch(e){ console.log('Supabase POST fail', e.message); }
   }
-  const bases = [getApiBase(), 'https://reason-widely-continent-sorry.trycloudflare.com'];
+  // جرب Local API
+  const bases = [getApiBase()];
+  const cf = (()=>{ try{ return localStorage.getItem('public_cf_url'); }catch(e){return null;} })();
+  if(cf) bases.push(cf);
   for(const base of bases){
     try{
       const r=await fetch(`${base}/api/products`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(prod)});
@@ -272,14 +273,15 @@ async function apiPostProduct(prod){
   return null;
 }
 async function apiPatchPrice(id, price){
-  if(!useApi) return null;
   if(window.SupabaseSync && SupabaseSync.isConfigured()){
     try{
       const saved = await SupabaseSync.updateProduct(id, {price});
       if(saved) return saved;
     }catch(e){ console.log('Supabase PATCH fail', e.message); }
   }
-  const bases = [getApiBase(), 'https://reason-widely-continent-sorry.trycloudflare.com'];
+  const bases = [getApiBase()];
+  const cf = (()=>{ try{ return localStorage.getItem('public_cf_url'); }catch(e){return null;} })();
+  if(cf) bases.push(cf);
   for(const base of bases){
     try{
       const r=await fetch(`${base}/api/products/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({price})});
@@ -288,6 +290,24 @@ async function apiPatchPrice(id, price){
     }catch(e){ console.log('PATCH fail', base, e.message); }
   }
   return null;
+}
+
+// تفعيل Supabase Realtime اللحظي
+function initSupabaseRealtime(){
+  if(!window.SupabaseSync || !SupabaseSync.isConfigured() || !SupabaseSync.subscribeRealtime) return;
+  if(_supaRealtimeActive) return;
+  try{
+    const ok = SupabaseSync.subscribeRealtime((newData)=>{
+      console.log('[Supabase RT] onChange', newData.length);
+      _applyProducts(newData, 'Supabase RT');
+      const badge=document.getElementById('syncStatus');
+      if(badge){ badge.textContent=`سحابي لحظي ✓ ${newData.length}`; badge.style.color='#2d8a4e'; }
+    });
+    if(ok){
+      _supaRealtimeActive = true;
+      console.log('✓ Supabase Realtime مفعل - مزامنة لحظية');
+    }
+  }catch(e){ console.log('RT init fail', e.message); }
 }
 
 function genBarcode(){
@@ -305,38 +325,47 @@ function clearForm(){
 async function saveProduct(){
   const name=pName.value.trim(), barcode=pBarcode.value.trim(), cat=pCat.value, price=parseFloat(pPrice.value||0), stock=parseInt(pStock.value||0), desc=pDesc.value.trim();
   if(!name) return alert("ادخل اسم المنتج");
-  // حتى لو price 0 يحفظ تلقائياً (محلي + API)
-  if(useApi){
-    const saved = await apiPostProduct({name, barcode, category:cat, price, stock, description:desc});
-    if(saved && saved.id){
-      products.unshift(saved);
-      _saveLocal();
-      renderUserTable();
-      if(document.getElementById('tableBody')) renderTable();
-      renderPricingTable();
-      clearForm();
-      alert(`تم الحفظ في قاعدة البيانات ✓\n${saved.name} - ${saved.price} جنيه`);
-      return;
-    }
+  // حتى لو price 0 يحفظ تلقائياً (محلي + API + سحابي)
+  const saved = await apiPostProduct({name, barcode, category:cat, price, stock, description:desc});
+  if(saved && saved.id){
+    // تم الحفظ عبر Supabase أو API - حدث المحلي فوراً
+    const exists = products.find(p=> p.id===saved.id || p.barcode===saved.barcode);
+    if(!exists) products.unshift(saved);
+    else Object.assign(exists, saved);
+    _saveLocal();
+    renderUserTable();
+    if(document.getElementById('tableBody')) renderTable();
+    renderPricingTable();
+    // أيضاً ارفع لـ GitHub كـ نسخة احتياطية
+    githubPushProducts(products, `auto sync products add ${name}`).catch(()=>{});
+    clearForm();
+    alert(`تم الحفظ ومزامنته لحظياً ✓\n${saved.name} - ${saved.price} جنيه`);
+    return;
   }
+  // fallback محلي + GitHub
   const id=Math.max(0,...products.map(p=>p.id))+1;
-  const newProd={id,name,barcode:barcode||"880"+Date.now(),category:cat,price,stock,desc};
+  const newProd={id,name,barcode:barcode||"880"+Date.now(),category:cat,price,stock,description:desc, created_at: new Date().toISOString(), updated_at: new Date().toISOString()};
   products.unshift(newProd);
   _saveLocal();
   renderUserTable();
   if(document.getElementById('tableBody')) renderTable();
   renderPricingTable();
-  // حل جذري: ارفع لـ GitHub حتى لو API غير متصل (يعمل عبر الإنترنت)
+  // حل جذري: ارفع لـ Supabase و GitHub حتى لو API غير متصل
+  if(window.SupabaseSync && SupabaseSync.isConfigured()){
+    SupabaseSync.addProduct(newProd).then(ok=>{
+      if(ok) console.log('✓ Supabase fallback push');
+    }).catch(()=>{});
+  }
   githubPushProducts(products, `auto sync products add ${name}`).then(ok=>{
     if(ok) console.log('✓ تم رفع المنتج لـ GitHub');
   });
-  alert(`تم الحفظ محلياً ✓\n${name} - ${price} جنيه${getGitHubToken()?' (سيرفع لـ GitHub)':''}`);
+  alert(`تم الحفظ محلياً ✓\n${name} - ${price} جنيه${getGitHubToken()?' (سيرفع لـ GitHub)':''}${window.SupabaseSync && SupabaseSync.isConfigured()?' (سيرفع لـ Supabase)':''}`);
 }
 
 function renderTable(){
   const searchEl=document.getElementById('search');
   const body=document.getElementById('tableBody');
-  if(!body) return; // لم تعد موجودة في وضع اضافة منتج فقط
+  if(!body) return;
   const q=(searchEl ? searchEl.value : "").trim().toLowerCase();
   body.innerHTML="";
   const filtered=products.filter(p=>{
@@ -354,7 +383,7 @@ function renderTable(){
     row.innerHTML=`
       <span class="w-num">${seq}</span>
       <span class="w-num">${p.stock}</span>
-      <span class="price">${p.price.toFixed(2)}</span>
+      <span class="price">${parseFloat(p.price).toFixed(2)}</span>
       <span>${p.category}</span>
       <span style="font-size:11px">${p.barcode}</span>
       <span>${p.name}</span>
@@ -368,10 +397,16 @@ function renderTable(){
   });
   if(filtered.length===0) body.innerHTML=`<div style="text-align:center;color:#9e9e9e;padding:20px">لا توجد منتجات</div>`;
 }
-function editProd(id){ const p=products.find(x=>x.id===id); if(!p) return; pName.value=p.name; pBarcode.value=p.barcode; pCat.value=p.category; pPrice.value=p.price; pStock.value=p.stock; pDesc.value=p.desc||""; window.scrollTo(0,0); }
-function delProd(id){ products=products.filter(p=>p.id!==id); _saveLocal(); renderUserTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); renderPricingTable(); }
+function editProd(id){ const p=products.find(x=>x.id===id); if(!p) return; pName.value=p.name; pBarcode.value=p.barcode; pCat.value=p.category; pPrice.value=p.price; pStock.value=p.stock; pDesc.value=p.description||p.desc||""; window.scrollTo(0,0); }
+function delProd(id){
+  // حاول حذف من Supabase أيضاً
+  if(window.SupabaseSync && SupabaseSync.isConfigured()){
+    SupabaseSync.deleteProduct(id).catch(()=>{});
+  }
+  products=products.filter(p=>p.id!==id); _saveLocal(); renderUserTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); renderPricingTable();
+  githubPushProducts(products, `delete product ${id}`).catch(()=>{});
+}
 
-// تبويب: اضافة منتج / المنتجات (متسعرة) / تسعير منتج (سعر 0) + انيميشن
 function switchRole(r){
   const map={admin:'viewAdmin', employee:'viewUser', pricing:'viewPricing'};
   Object.values(map).forEach(id=>{
@@ -382,7 +417,6 @@ function switchRole(r){
   const target=document.getElementById(targetId);
   if(target){
     target.style.display='block';
-    // force reflow لضمان تشغيل الانيميشن
     void target.offsetWidth;
     target.classList.add('active');
   }
@@ -392,7 +426,6 @@ function switchRole(r){
   if(tabPricing) tabPricing.classList.toggle('active', r==='pricing');
   const ul=document.getElementById('userLabel');
   if(ul) ul.textContent='المستخدم: '+(r==='admin'?'admin':'user');
-  // الأسماء الجديدة: اضافة منتج / المنتجات / تسعير 
   const tabAdmin=document.getElementById('tabAdmin');
   const tabUser=document.getElementById('tabUser');
   if(tabAdmin) tabAdmin.textContent='اضافة منتج';
@@ -411,7 +444,6 @@ function renderUserTable(){
   const body=document.getElementById('userTableBody');
   if(!body) return;
   body.innerHTML="";
-  // قسم المنتجات يعرض فقط المتسعرة (سعر != 0) حسب الطلب
   const pricedProducts = products.filter(p=> parseFloat(p.price) !== 0 && p.price !== null && p.price !== '' );
   const filtered=pricedProducts.filter(p=>{
     if(!q) return true;
@@ -428,7 +460,7 @@ function renderUserTable(){
     row.innerHTML=`
       <span class="w-num">${seq}</span>
       <span class="w-num">${p.stock}</span>
-      <span class="price">${p.price.toFixed(2)}</span>
+      <span class="price">${parseFloat(p.price).toFixed(2)}</span>
       <span>${p.category}</span>
       <span style="font-size:11px">${p.barcode}</span>
       <span>${p.name}</span>`;
@@ -437,9 +469,8 @@ function renderUserTable(){
   if(filtered.length===0) body.innerHTML=`<div style="text-align:center;color:#9e9e9e;padding:20px">لا توجد منتجات</div>`;
 }
 function syncPricing(){
-  // مزامنة مع قاعدة البيانات: المنتجات التي سعرها 0
   const badge=document.getElementById('pricingCount');
-  const count=products.filter(p=>!p.price || p.price===0).length;
+  const count=products.filter(p=>!p.price || parseFloat(p.price)===0).length;
   if(badge) badge.textContent=count+" جاهز";
 }
 function renderPricingTable(){
@@ -447,7 +478,7 @@ function renderPricingTable(){
   const body=document.getElementById('pricingTableBody');
   if(!body) return;
   body.innerHTML="";
-  let filtered=products.filter(p=>!p.price || p.price===0);
+  let filtered=products.filter(p=>!p.price || parseFloat(p.price)===0);
   if(q){
     filtered=filtered.filter(p=>{
       if(/^\d+$/.test(q)){
@@ -458,7 +489,6 @@ function renderPricingTable(){
       return p.name.toLowerCase().includes(q) || p.barcode.includes(q);
     });
   }
-  // مزامنة العدد
   const badge=document.getElementById('pricingCount');
   if(badge) badge.textContent=filtered.length+" جاهز";
   filtered.forEach(p=>{
@@ -477,18 +507,18 @@ async function setPrice(id){
   const inp=document.getElementById('price_'+id);
   const v=parseFloat(inp.value);
   if(isNaN(v) || v<0) return alert('ادخل سعر صحيح >= 0');
-  if(useApi){
-    const updated = await apiPatchPrice(id, v);
-    if(updated){
-      const p=products.find(x=>x.id===id);
-      if(p) p.price=updated.price;
-      _saveLocal();
-      renderPricingTable();
-      renderUserTable();
-      const tb=document.getElementById('tableBody'); if(tb) renderTable();
-      alert(`تم تحديث السعر ✓ ${updated.price} جنيه`);
-      return;
-    }
+  const updated = await apiPatchPrice(id, v);
+  if(updated){
+    const p=products.find(x=>x.id===id);
+    if(p) p.price=updated.price;
+    _saveLocal();
+    renderPricingTable();
+    renderUserTable();
+    const tb=document.getElementById('tableBody'); if(tb) renderTable();
+    // رفع لـ GitHub كنسخة احتياطية
+    githubPushProducts(products, `price ${id}=${v}`).catch(()=>{});
+    alert(`تم تحديث السعر ومزامنته ✓ ${updated.price} جنيه`);
+    return;
   }
   const p=products.find(x=>x.id===id);
   if(!p) return;
@@ -497,14 +527,15 @@ async function setPrice(id){
   renderPricingTable();
   renderUserTable();
   const tb=document.getElementById('tableBody'); if(tb) renderTable();
-  // حل جذري: ارفع لـ GitHub
+  if(window.SupabaseSync && SupabaseSync.isConfigured()){
+    SupabaseSync.updateProduct(id, {price: v}).catch(()=>{});
+  }
   githubPushProducts(products, `auto sync products price ${id}=${v}`).then(ok=>{
     if(ok) console.log('✓ GitHub price push');
   });
   alert(`تم تحديث السعر محلياً ✓ ${v} جنيه${getGitHubToken()?' (سيرفع لـ GitHub)':''}`);
 }
 function scanEnter(){
-  // لم تعد السلة موجودة - البحث الآن عبر القائمة
   const el=document.getElementById('searchUser');
   if(el) el.focus();
 }
@@ -520,7 +551,7 @@ function addToCart(prod){
   selected=prod; renderCart(); renderDetails(prod);
 }
 function renderCart(){
-  const body=document.getElementById('cartBody'); body.innerHTML='';
+  const body=document.getElementById('cartBody'); if(!body) return; body.innerHTML='';
   if(cart.length===0){ body.innerHTML=`<div style="text-align:center;color:#9e9e9e;padding:20px">السلة فارغة — امسح باركود</div>`; updateTotal(); return; }
   cart.forEach((it,idx)=>{
     const p=it.product, qty=it.qty, total=(p.price*qty).toFixed(2);
@@ -537,13 +568,12 @@ function renderCart(){
   updateTotal();
 }
 function renderDetails(prod){
-  // تفاصيل المنتج أزيلت من قسم المنتجات حسب الطلب — نحتفظ بالدالة للتوافق مع السلة
   const hasDetails = typeof dName !== 'undefined' && dName && typeof dBarcode !== 'undefined' && dBarcode;
   if(!hasDetails) { selected=prod; return; }
   if(!prod){ dName.textContent="اختر منتج أو امسح باركود"; dBarcode.textContent="—"; dSerial.textContent="—"; dPrice.textContent="—"; dStock.textContent="المتاح: —"; selected=null; return; }
   selected=prod;
   const seq=products.indexOf(prod)+1;
-  dName.textContent=prod.name; dBarcode.textContent="باركود: "+prod.barcode; dSerial.textContent=`#${seq} — ${String(prod.id).padStart(4,'0')}`; dPrice.textContent=prod.price.toFixed(2)+" جنيه"; dStock.textContent=`المتاح: ${prod.stock} قطعة`;
+  dName.textContent=prod.name; dBarcode.textContent="باركود: "+prod.barcode; dSerial.textContent=`#${seq} — ${String(prod.id).padStart(4,'0')}`; dPrice.textContent=parseFloat(prod.price).toFixed(2)+" جنيه"; dStock.textContent=`المتاح: ${prod.stock} قطعة`;
 }
 function changeQty(idx,delta){
   const it=cart[idx]; if(!it) return;
@@ -557,32 +587,32 @@ function clearCart(){ cart=[]; renderCart(); renderDetails(null); }
 function updateTotal(){
   const total=cart.reduce((s,it)=>s+it.product.price*it.qty,0);
   const count=cart.reduce((s,it)=>s+it.qty,0);
-  document.getElementById('totalLabel').textContent=`${count} قطعة | الإجمالي: ${total.toFixed(2)} جنيه`;
+  const el=document.getElementById('totalLabel');
+  if(el) el.textContent=`${count} قطعة | الإجمالي: ${total.toFixed(2)} جنيه`;
 }
 function checkout(){
   if(cart.length===0) return alert('السلة فارغة');
   const total=cart.reduce((s,it)=>s+it.product.price*it.qty,0);
   alert(`تم الدفع ${total.toFixed(2)} جنيه — ${cart.length} منتجات`);
-  // خصم مخزون تجريبي
   cart.forEach(it=>{ const p=products.find(x=>x.id===it.product.id); if(p) p.stock=Math.max(0,p.stock-it.qty); });
   _saveLocal();
   cart=[]; renderCart(); renderDetails(null); renderUserTable();
   const tb=document.getElementById('tableBody'); if(tb) renderTable();
 }
 
-// clock - أرقام إنجليزية فقط
-setInterval(()=>{ const d=new Date(); clock.textContent=d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', hour12:true}); dateLabel.textContent=d.toLocaleDateString('en-GB'); },1000);
+setInterval(()=>{ const d=new Date(); const cl=document.getElementById('clock'); const dl=document.getElementById('dateLabel'); if(cl) cl.textContent=d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', hour12:true}); if(dl) dl.textContent=d.toLocaleDateString('en-GB'); },1000);
 const scanEl=document.getElementById('scan');
 if(scanEl) scanEl.addEventListener('keydown', e=>{ if(e.key==='Enter') scanEnter(); });
-genBarcode(); renderTable(); renderUserTable(); renderPricingTable(); renderCart();
-// مزامنة مع قاعدة البيانات الحقيقية + المحلية
+genBarcode(); renderTable(); renderUserTable(); renderPricingTable(); if(typeof renderCart==='function') renderCart();
 try{ document.getElementById('apiUrl').textContent=getApiBase(); }catch(e){}
 syncFromLocalFile().then(()=> syncFromApi());
-// حدث عنوان الـ API في الواجهة بعد الاكتشاف التلقائي
+initSupabaseRealtime();
 setTimeout(()=>{ try{ const el=document.getElementById('apiUrl'); if(el) el.textContent=getApiBase(); }catch(e){} }, 3500);
-setInterval(()=>{ syncFromLocalFile(); syncFromApi(); }, 5000); // تحديث كل 5 ثواني (محلي + شبكة)
+// مزامنة لحظية كل 2.5 ثانية + Supabase Realtime
+setInterval(()=>{ syncFromLocalFile(); syncFromApi(); }, 2500);
+setInterval(()=>{ if(window.SupabaseSync && SupabaseSync.isConfigured() && !_supaRealtimeActive) initSupabaseRealtime(); }, 8000);
 
-// يتعرف على ريزولوشن الشاشة ويأخذ حجمها فور التشغيل (مع debounce لتجنب التهنيج في VS Code)
+// يتعرف على ريزولوشن الشاشة
 let _lastW=0,_lastH=0,_screenTimer=null;
 function applyScreenSize(){
   const w=window.innerWidth, h=window.innerHeight;
@@ -590,8 +620,6 @@ function applyScreenSize(){
   _lastW=w; _lastH=h;
   const phone=document.querySelector('.phone');
   if(!phone) return;
-  const sw=window.screen?window.screen.width:w, sh=window.screen?window.screen.height:h;
-  const dpr=window.devicePixelRatio||1;
   phone.style.width=w+'px';
   phone.style.height=h+'px';
   phone.style.maxWidth='none';

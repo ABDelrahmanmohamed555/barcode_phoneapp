@@ -11,11 +11,19 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PHONE_DIR = os.path.join(os.path.dirname(BASE_DIR), "phone app")
+# phone app/server → phone app (أب مباشر)
+PHONE_DIR = os.path.dirname(BASE_DIR)
+# تأكد أننا فعلاً في phone app
+if os.path.basename(PHONE_DIR) != "phone app" and not os.path.exists(os.path.join(PHONE_DIR, "products.json")):
+    # fallback: ابحث عن phone app بجانب Desktop
+    for cand in ["/home/kali/Desktop/phone app", os.path.join(os.path.dirname(BASE_DIR), "phone app"), os.path.abspath(os.path.join(PHONE_DIR, "..", "phone app"))]:
+        if os.path.exists(os.path.join(cand, "products.json")):
+            PHONE_DIR = cand
+            break
 PHONE_JSON = os.path.join(PHONE_DIR, "products.json")
 PHONE_VERSION_JSON = os.path.join(PHONE_DIR, "version.json")
 # ضمان وجود مسارات المشروع حتى لو شُغّل من venv أو cron
-for p in [os.path.dirname(BASE_DIR), BASE_DIR, "/home/kali/Desktop", "/home/kali/Desktop/cashier"]:
+for p in [os.path.dirname(BASE_DIR), BASE_DIR, "/home/kali/Desktop", "/home/kali/Desktop/cashier", "/home/kali/Desktop/prot"]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
