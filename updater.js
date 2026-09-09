@@ -5,7 +5,7 @@
   const CURRENT_VERSION = "1.0.0"; // يجب أن يتطابق مع version.json
   const STORAGE_KEY_VERSION = "ota_version";
   const STORAGE_KEY_IGNORE = "ota_ignore_version";
-  const CHECK_INTERVAL_MS = 60 * 60 * 1000; // فحص كل ساعة (أو عند كل فتح)
+  const CHECK_INTERVAL_MS = 5 * 60 * 1000; // فحص كل 5 دقائق + عند كل فتح (كان ساعة)
 
   // حدد سيرفر التحديث — نفس API_BASE المستخدم في app.js
   function getApiBase(){
@@ -431,54 +431,56 @@
   }
 
   async function applyViaFiles(base, verData){
-    // يحمل الملفات واحد واحد ويخزنها
+    // يحمل كل الملفات المذكورة في version.json ويخزنها — أي ملف جديد تضيفه سينزل تلقائياً
     const files = verData.files ? Object.keys(verData.files) : ['index.html','app.js','style.css','manifest.json','version.json'];
-    // فلتر فقط الملفات النصية
-    const textFiles = files.filter(f=> !f.endsWith('.png') && !f.endsWith('.apk') && !f.endsWith('.zip'));
     let done = 0;
-    for(const f of textFiles){
+    const total = files.length || 1;
+    // أنواع الصور/الباينري
+    const isBinary = (f)=> /\.(png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf|eot)$/i.test(f);
+    const isText = (f)=> !isBinary(f) && !f.endsWith('.apk') && !f.endsWith('.zip');
+    for(const f of files){
+      showProgress( 5 + Math.round(done/total*85), `تحميل ${f}...`);
       const url = base.replace(/\/+$/,'') + '/' + f.replace(/^\//,'');
-      showProgress( 5 + Math.round(done/textFiles.length*85), `تحميل ${f}...`);
       try{
         const r = await fetch(url + '?_t=' + Date.now(), {cache:'no-store'});
         if(!r.ok) throw new Error(r.status);
-        const txt = await r.text();
-        // تحقق hash لو موجود
-        if(verData.files && verData.files[f]){
-          // نحسب hash بسيط للمقارنة (لا نوقف التحديث لو اختلف)
-          console.log(`[OTA] حمل ${f} ${txt.length} bytes`);
-        }
-        // خزن في localStorage + Cache API لو متاح
-        try{ localStorage.setItem('ota_' + f, txt); }catch(e){ console.warn('localStorage full', e); }
-        try{
-          if('caches' in window){
-            const cache = await caches.open('ota-v' + verData.version);
-            const res = new Response(txt, {headers:{'Content-Type': f.endsWith('.js')?'text/javascript': f.endsWith('.css')?'text/css':'text/html'}});
-            await cache.put(f, res);
-          }
-        }catch(e){}
-      }catch(e){
-        console.warn('[OTA] تخطي', f, e.message);
-        // لو فشل تحميل ملف واحد لا نوقف الكل — نكمل
-      }
-      done++;
-    }
-    // للصور: حاول تحميل icon.png كـ base64
-    if(files.includes('icon.png')){
-      try{
-        const url = base.replace(/\/+$/,'') + '/icon.png?_t=' + Date.now();
-        const r = await fetch(url, {cache:'no-store'});
-        if(r.ok){
+        if(isBinary(f)){
+          // صورة/خط: خزن كـ base64 + Cache
           const blob = await r.blob();
-          const reader = new FileReader();
           const b64 = await new Promise((res,rej)=>{
+            const reader = new FileReader();
             reader.onload=()=>res(reader.result);
             reader.onerror=rej;
             reader.readAsDataURL(blob);
           });
-          try{ localStorage.setItem('ota_icon.png', b64); }catch(e){}
+          try{ localStorage.setItem('ota_' + f, b64); }catch(e){ console.warn('localStorage full for', f); }
+          try{
+            if('caches' in window){
+              const cache = await caches.open('ota-v' + verData.version);
+              const res = new Response(blob, {headers:{'Content-Type': r.headers.get('Content-Type')||'application/octet-stream'}});
+              await cache.put(f, res);
+            }
+          }catch(e){}
+          console.log(`[OTA] حمل binary ${f} ${blob.size} bytes`);
+        } else if(isText(f)){
+          const txt = await r.text();
+          if(verData.files && verData.files[f]) console.log(`[OTA] حمل ${f} ${txt.length} bytes`);
+          try{ localStorage.setItem('ota_' + f, txt); }catch(e){ console.warn('localStorage full', f, e); }
+          try{
+            if('caches' in window){
+              const contentType = f.endsWith('.js')?'text/javascript': f.endsWith('.css')?'text/css': f.endsWith('.json')?'application/json': 'text/html';
+              const cache = await caches.open('ota-v' + verData.version);
+              const res = new Response(txt, {headers:{'Content-Type': contentType}});
+              await cache.put(f, res);
+              // أيضاً احفظ نسخة مطلقة للـ file://
+              await cache.put(url, res.clone());
+            }
+          }catch(e){}
         }
-      }catch(e){}
+      }catch(e){
+        console.warn('[OTA] تخطي', f, e.message);
+      }
+      done++;
     }
     showProgress(95, 'جاري الحفظ...');
   }
@@ -523,47 +525,85 @@
     showProgress(90, 'تم فك الحزمة');
   }
 
-  // --- تحميل ملفات OTA المخزنة مبكراً (قبل تحميل app.js) ---
-  // لو يوجد ota_app.js أو ota_style.css مطبق، نحقنه الآن
+  // --- تحميل ملفات OTA المخزنة مبكراً (قبل تحميل app.js) — يعمل لأي ملف جديد ---
   function injectCachedIfExists(){
     try{
       const ver = getStoredVersion();
-      // لا نحقن لو النسخة المطبقة هي نفس CURRENT_VERSION والملفات الأصلية أحدث
-      // لكن لو ota_version > CURRENT_VERSION يعني تحديث مطبق
       if(compareVersions(ver, CURRENT_VERSION) <=0) return;
-      const otaCss = localStorage.getItem('ota_style.css');
-      if(otaCss){
-        const st = document.createElement('style');
-        st.id='ota-style';
-        st.textContent = otaCss;
-        document.head.appendChild(st);
-        console.log('[OTA] تم حقن style.css من التحديث', ver);
-      }
-      const otaAppJs = localStorage.getItem('ota_app.js');
-      if(otaAppJs){
-        // سنحمّله ديناميكياً — نحذف السكربت الأصلي لو موجود
-        const orig = document.querySelector('script[src="app.js"]');
-        if(orig) orig.remove();
-        const s = document.createElement('script');
-        s.id='ota-app';
-        s.textContent = otaAppJs;
-        // أجل تنفيذه بعد تحميل الـ DOM
-        document.addEventListener('DOMContentLoaded', ()=>{
-          document.body.appendChild(s);
-          console.log('[OTA] تم حقن app.js من التحديث', ver);
-        });
-        if(document.readyState !== 'loading'){
-          document.body.appendChild(s);
-        }
-      }
-      // icon
-      const otaIcon = localStorage.getItem('ota_icon.png');
-      if(otaIcon){
-        const imgs = document.querySelectorAll('img[src="icon.png"]');
-        imgs.forEach(img=> img.src = otaIcon);
+      // حقن كل ملفات OTA المحفوظة
+      for(let i=0;i<localStorage.length;i++){
+        const key = localStorage.key(i);
+        if(!key || !key.startsWith('ota_')) continue;
+        const fname = key.slice(4); // بعد ota_
+        if(fname==='version.json' || fname==='manifest.json') continue;
+        const val = localStorage.getItem(key);
+        if(!val) continue;
+        try{
+          if(fname.endsWith('.css')){
+            const st = document.createElement('style');
+            st.id='ota-'+fname;
+            st.textContent = val;
+            document.head.appendChild(st);
+            console.log('[OTA] حقن', fname, ver);
+          } else if(fname.endsWith('.js')){
+            // لا نحقن updater.js أو sw.js مبكراً
+            if(fname==='updater.js' || fname==='sw.js') continue;
+            // احذف الأصلي لو موجود
+            const orig = document.querySelector(`script[src="${fname}"]`);
+            if(orig) orig.remove();
+            const s = document.createElement('script');
+            s.id='ota-'+fname;
+            s.textContent = val;
+            if(document.readyState === 'loading'){
+              document.addEventListener('DOMContentLoaded', ()=> document.body.appendChild(s));
+            } else {
+              document.body.appendChild(s);
+            }
+            console.log('[OTA] حقن', fname, ver);
+          } else if(/\.(png|jpg|jpeg|gif|webp|ico)$/i.test(fname)){
+            // صورة base64
+            const imgs = document.querySelectorAll(`img[src="${fname}"]`);
+            imgs.forEach(img=> img.src = val);
+            // أيضاً أي عنصر يستخدم icon.png
+            if(fname==='icon.png'){
+              const allIcons = document.querySelectorAll('img[src="icon.png"]');
+              allIcons.forEach(img=> img.src = val);
+            }
+          }
+        }catch(e){ console.warn('[OTA] inject fail', fname, e); }
       }
     }catch(e){ console.warn('[OTA] inject fail', e); }
   }
+
+  // اعتراض fetch لخدمة أي ملف OTA حتى لو الملف جديد — يضمن أن أي ملف جديد تضيفه يُحمّل بدون تثبيت
+  (function(){
+    if(window._otaFetchPatched) return;
+    window._otaFetchPatched = true;
+    const origFetch = window.fetch;
+    window.fetch = async function(input, init){
+      try{
+        const url = typeof input === 'string' ? input : input.url;
+        const clean = url.split('?')[0].split('#')[0];
+        const fname = clean.split('/').pop();
+        // لو الملف موجود في localStorage كـ OTA، أرجعه مباشرة
+        const otaKey = 'ota_' + fname;
+        const otaVal = (()=>{ try{ return localStorage.getItem(otaKey); }catch(e){return null;} })();
+        const ver = getStoredVersion();
+        if(otaVal && compareVersions(ver, CURRENT_VERSION) > 0){
+          if(fname.endsWith('.js') || fname.endsWith('.css') || fname.endsWith('.html') || fname.endsWith('.json')){
+            console.log('[OTA] fetch intercept', fname);
+            const ct = fname.endsWith('.js')?'text/javascript': fname.endsWith('.css')?'text/css': fname.endsWith('.json')?'application/json':'text/html';
+            return new Response(otaVal, {headers:{'Content-Type': ct}, status:200});
+          } else if(/\.(png|jpg|jpeg|gif|webp)$/i.test(fname) && otaVal.startsWith('data:')){
+            // صورة base64 → حولها لـ blob
+            const res = await fetch(otaVal);
+            return res;
+          }
+        }
+      }catch(e){}
+      return origFetch.apply(this, arguments);
+    };
+  })();
 
   // شغل الحقن فوراً (قبل DOMContentLoaded)
   if(document.readyState === 'loading'){

@@ -7,8 +7,33 @@ import argparse, json, hashlib, os, datetime, shutil, pathlib
 
 BASE = pathlib.Path(__file__).parent.resolve()
 VERSION_JSON = BASE / "version.json"
-FILES = ["index.html","app.js","style.css","manifest.json","updater.js","supabase_sync.js"]
-# icon.png نضيفه لو تغير
+# حصر كل ملفات التطبيق تلقائياً — أي ملف جديد تضيفه سيدخل التحديث بدون تعديل
+AUTO_IGNORE = {".git", "protPhone", "platforms", "node_modules", "venv", "__pycache__", ".vscode", "server", ".tmp", "reports"}
+AUTO_EXCLUDE_EXT = {".apk", ".zip"}  # ملفات ثقيلة لا تدخل OTA
+def _scan_files():
+    files = []
+    for p in BASE.iterdir():
+        if p.name in AUTO_IGNORE:
+            continue
+        if p.is_file():
+            if p.suffix.lower() in AUTO_EXCLUDE_EXT:
+                continue
+            # تجاهل ملفات مؤقتة
+            if p.name.startswith(".") and p.name != ".htaccess":
+                continue
+            # فقط ملفات الويب والأصول
+            if p.suffix.lower() in {".html",".js",".css",".json",".png",".jpg",".jpeg",".svg",".webp",".ico",".txt",".woff",".woff2",".ttf"}:
+                files.append(p.name)
+    # أضف ملفات داخل مجلدات مسموحة مثل assets لو موجود
+    for sub in ["assets"]:
+        sp = BASE / sub
+        if sp.exists() and sp.is_dir():
+            for q in sp.rglob("*"):
+                if q.is_file() and q.suffix.lower() not in AUTO_EXCLUDE_EXT:
+                    files.append(str(q.relative_to(BASE)))
+    return sorted(set(files))
+FILES = _scan_files() if False else ["index.html","app.js","style.css","manifest.json","updater.js","supabase_sync.js"]
+# ستُحسب ديناميكياً في main()
 
 def sha256_file(p):
     h = hashlib.sha256()
@@ -47,16 +72,27 @@ def main():
     if args.version and not args.build:
         new_build = old_build + 1
 
-    # hash الملفات
+    # hash الملفات — حصر تلقائي لأي ملف جديد
+    try:
+        scanned = _scan_files()
+        _files_to_hash = scanned if scanned else FILES
+    except Exception:
+        _files_to_hash = FILES
+    # تأكد أن الأساسيات موجودة حتى لو _scan_files فشل
+    for must in ["index.html","app.js","style.css","manifest.json","updater.js","supabase_sync.js","version.json","sw.js"]:
+        if must not in _files_to_hash and (BASE / must).exists():
+            _files_to_hash.append(must)
+    # icon دائما
+    if "icon.png" not in _files_to_hash and (BASE / "icon.png").exists():
+        _files_to_hash.append("icon.png")
     files_hash = {}
-    for fname in FILES:
+    for fname in sorted(set(_files_to_hash)):
         fp = BASE / fname
-        if fp.exists():
-            files_hash[fname] = sha256_file(fp)
-    # icon
-    icon = BASE / "icon.png"
-    if icon.exists():
-        files_hash["icon.png"] = sha256_file(icon)
+        if fp.exists() and fp.is_file():
+            try:
+                files_hash[fname] = sha256_file(fp)
+            except Exception:
+                pass
 
     data["version"] = new_ver
     data["build"] = new_build
@@ -74,20 +110,27 @@ def main():
 
     VERSION_JSON.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"✓ تم إنشاء version.json → {new_ver} build {new_build}")
-    print(f"  الملفات: {list(files_hash.keys())}")
+    print(f"  الملفات ({len(files_hash)}): {list(files_hash.keys())}")
 
-    # انسخ إلى protPhone
+    # انسخ version.json إلى protPhone
     for dest in [BASE / "protPhone/www/version.json", BASE / "protPhone/platforms/android/app/src/main/assets/www/version.json"]:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(VERSION_JSON, dest)
         print(f"  → نسخ إلى {dest.relative_to(BASE)}")
 
-    # انسخ updater.js أيضا
-    for dest in [BASE / "protPhone/www/updater.js", BASE / "protPhone/platforms/android/app/src/main/assets/www/updater.js"]:
-        src = BASE / "updater.js"
-        if src.exists():
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dest)
+    # انسخ كل ملفات التحديث إلى protPhone/www (للبناء القادم) — أي ملف جديد سينسخ تلقائياً
+    for fname in files_hash.keys():
+        if fname == "version.json":
+            continue
+        src = BASE / fname
+        if not src.exists():
+            continue
+        for dest in [BASE / "protPhone/www" / fname, BASE / "protPhone/platforms/android/app/src/main/assets/www" / fname]:
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+            except Exception:
+                pass
 
     if args.push:
         import subprocess, os
