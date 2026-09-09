@@ -1,16 +1,29 @@
 [
   {
+    "id": 49,
+    "name": "منتج تجريبي إضافة",
+    "barcode": "8808638408708",
+    "category": "عام",
+    "price": 123.0,
+    "stock": 10,
+    "description": "test add",
+    "image_path": "",
+    "barcode_path": "",
+    "created_at": "2026-09-09 20:16:44",
+    "updated_at": "2026-09-09 20:16:44"
+  },
+  {
     "id": 38,
     "name": "كاوتشة غسالة توشيبا",
     "barcode": "8809987644250",
     "category": "قطع غيار",
-    "price": 0.0,
-    "stock": 29,
+    "price": 555.0,
+    "stock": 99,
     "description": "",
     "image_path": "",
     "barcode_path": "",
     "created_at": "2026-09-07 12:12:06",
-    "updated_at": "2026-09-09 20:16:31"
+    "updated_at": "2026-09-09 20:16:33"
   },
   {
     "id": 37,
