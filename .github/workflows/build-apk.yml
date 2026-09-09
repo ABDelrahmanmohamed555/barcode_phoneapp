@@ -1,0 +1,75 @@
+name: Build APK (elnahal technology)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'protPhone/config.xml'
+      - 'protPhone/www/**'
+      - 'version.json'
+      - 'app.js'
+      - 'index.html'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Cordova
+        run: npm install -g cordova
+
+      - name: Install deps
+        working-directory: ./protPhone
+        run: npm install
+
+      - name: Add Android platform (if missing)
+        working-directory: ./protPhone
+        run: |
+          if [ ! -d "platforms/android" ]; then cordova platform add android; fi
+
+      - name: Install plugins
+        working-directory: ./protPhone
+        run: |
+          cordova plugin add cordova-plugin-file --save || true
+          cordova plugin add cordova-plugin-zip --save || true
+          cordova plugin add cordova-plugin-file-opener2 --save || true
+          cordova plugin add cordova-plugin-whitelist --save || true
+
+      - name: Build APK
+        working-directory: ./protPhone
+        run: cordova build android --debug -- --packageType=apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: elnahal-technology-apk
+          path: protPhone/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Create Release (if version changed)
+        if: contains(github.event.head_commit.message, 'update')
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: apk-v${{ github.run_number }}
+          name: elnahal technology APK ${{ github.run_number }}
+          files: protPhone/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

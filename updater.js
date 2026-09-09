@@ -354,6 +354,19 @@
       try{
         console.log('[OTA] فحص', url);
         const data = await fetchVersion(url);
+        // فحص APK native أولاً (حتى لو إصدار الويب نفسه)
+        if(data.apk_url && data.apk_version && window.cordova && cordova.file){
+          const curApk = (()=>{ try{ return localStorage.getItem('ota_apk_version')|| stored; }catch(e){return stored;} })();
+          if(compareVersions(data.apk_version, curApk) > 0){
+            _pendingData = data;
+            _pendingData._sourceBase = url.replace(/\/version\.json.*$/,'').replace(/\/api\/app_version.*$/,'');
+            if(url.includes('/api/app_version')) _pendingData._sourceBase = getApiBase();
+            const apkData = {...data, version: data.apk_version, notes: `تحديث APK ${data.apk_version} — اضغط للتثبيت`, _isApk:true};
+            showBanner(apkData);
+            if(manual) toast('تحديث APK جديد ' + data.apk_version + ' متاح');
+            return apkData;
+          }
+        }
         const cmp = compareVersions(data.version, stored);
         console.log(`[OTA] local ${stored} vs remote ${data.version} = ${cmp}`);
         if(cmp > 0){
@@ -410,6 +423,14 @@
     try{
       const isCordova = !!(window.cordova && cordova.file);
       const base = verData._sourceBase || getApiBase();
+      // لو يوجد APK جديد حمله وثبته (native — يتطلب تثبيت)
+      if(isCordova && verData.apk_url){
+        const curApk = (()=>{ try{ return localStorage.getItem('ota_apk_version')|| CURRENT_VERSION; }catch(e){return CURRENT_VERSION;} })();
+        if(verData.apk_version && compareVersions(verData.apk_version, curApk) > 0){
+          await downloadAndInstallApk(verData.apk_url, verData.apk_version);
+          return;
+        }
+      }
       // لو يوجد bundle_url حمله كـ zip (لـ Cordova)
       if(isCordova && verData.bundle_url){
         await applyViaBundle(base, verData);
@@ -523,6 +544,48 @@
       throw new Error('cordova-plugin-zip غير مثبت — استخدم التحميل المباشر');
     }
     showProgress(90, 'تم فك الحزمة');
+  }
+
+  async function downloadAndInstallApk(apkUrl, apkVersion){
+    showProgress(10, 'جاري تحميل APK الجديد...');
+    const apkFullUrl = apkUrl.startsWith('http') ? apkUrl : (getApiBase().replace(/\/+$/,'') + '/' + apkUrl.replace(/^\//,''));
+    console.log('[OTA] تحميل APK', apkFullUrl);
+    const resp = await fetch(apkFullUrl + '?_t=' + Date.now(), {cache:'no-store'});
+    if(!resp.ok) throw new Error('فشل تحميل APK ' + resp.status);
+    const blob = await resp.blob();
+    showProgress(50, `تم التحميل ${(blob.size/1024/1024).toFixed(1)}MB — جاري الحفظ...`);
+    // احفظ في cacheDirectory
+    const fileEntry = await new Promise((resolve, reject)=>{
+      window.resolveLocalFileSystemURL(cordova.file.externalCacheDirectory || cordova.file.cacheDirectory, dir=>{
+        dir.getFile('elnahal-update.apk', {create:true}, resolve, reject);
+      }, reject);
+    });
+    await new Promise((resolve, reject)=>{
+      fileEntry.createWriter(writer=>{
+        writer.onwriteend=resolve;
+        writer.onerror=reject;
+        writer.write(blob);
+      }, reject);
+    });
+    showProgress(80, 'جاري التثبيت...');
+    try{ localStorage.setItem('ota_apk_version', apkVersion); }catch(e){}
+    // افتح المثبت عبر fileOpener2
+    if(window.cordova && cordova.plugins && cordova.plugins.fileOpener2){
+      await new Promise((resolve, reject)=>{
+        cordova.plugins.fileOpener2.open(fileEntry.nativeURL, 'application/vnd.android.package-archive', {
+          error: (e)=> reject(new Error(JSON.stringify(e))),
+          success: ()=> resolve()
+        });
+      });
+      showProgress(100, 'تم فتح المثبت ✓');
+      toast('اضغط تثبيت لإكمال التحديث');
+    } else if(window.cordova && window.cordova.plugins && window.cordova.plugins.fileOpener2){
+      window.cordova.plugins.fileOpener2.open(fileEntry.toURL(), 'application/vnd.android.package-archive');
+    } else {
+      // fallback: حاول فتح عبر intent
+      window.open(fileEntry.nativeURL, '_system');
+      toast('نزل الـ APK — افتحه من التنزيلات للتثبيت');
+    }
   }
 
   // --- تحميل ملفات OTA المخزنة مبكراً (قبل تحميل app.js) — يعمل لأي ملف جديد ---

@@ -1,7 +1,7 @@
 {
-  "name": "نظام المنتجات - الباركود",
-  "short_name": "باركود",
-  "description": "نظام المنتجات والباركود - نسخة الموبايل",
+  "name": "elnahal technology",
+  "short_name": "elnahal",
+  "description": "elnahal technology - نظام المنتجات والباركود",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0d1117",
