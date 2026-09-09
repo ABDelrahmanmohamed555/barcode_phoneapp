@@ -195,6 +195,24 @@ async function syncFromApi(){
     await syncFromLocalFile();
     return;
   }
+  // 0) حل جذري: Supabase أولاً (يعمل عبر الإنترنت بدون سيرفر ولا نفس الشبكة)
+  if(window.SupabaseSync && SupabaseSync.isConfigured()){
+    try{
+      const data = await SupabaseSync.getProducts();
+      if(Array.isArray(data) && data.length>=0){
+        if(data.length>0 && JSON.stringify(data) !== JSON.stringify(products)){
+          products = data;
+          _saveLocal();
+          renderUserTable(); renderPricingTable();
+          const tb=document.getElementById('tableBody'); if(tb) renderTable();
+        }
+        const badge=document.getElementById('syncStatus');
+        if(badge){ badge.textContent=`سحابي Supabase ✓ ${data.length}`; badge.style.color='#2d8a4e'; }
+        console.log(`✓ Supabase sync: ${data.length}`);
+        return;
+      }
+    }catch(e){ console.log('Supabase fail', e.message); }
+  }
   const bases = [];
   const localBase = getApiBase();
   if(localBase) bases.push(localBase);
@@ -226,10 +244,23 @@ async function syncFromApi(){
   // 3) fallback محلي
   if(await syncFromLocalFile()) return;
   const badge=document.getElementById('syncStatus');
-  if(badge){ badge.textContent='غير متصل - محلي'; badge.style.color='#c8943a'; }
+  if(badge){
+    if(window.SupabaseSync && !SupabaseSync.isConfigured()){
+      badge.textContent='api غير متصل - اضغط ⚙ Supabase';
+    } else {
+      badge.textContent='غير متصل - محلي';
+    }
+    badge.style.color='#c8943a';
+  }
 }
 async function apiPostProduct(prod){
   if(!useApi) return null;
+  if(window.SupabaseSync && SupabaseSync.isConfigured()){
+    try{
+      const saved = await SupabaseSync.addProduct(prod);
+      if(saved) return saved;
+    }catch(e){ console.log('Supabase POST fail', e.message); }
+  }
   const bases = [getApiBase(), 'https://reason-widely-continent-sorry.trycloudflare.com'];
   for(const base of bases){
     try{
@@ -242,6 +273,12 @@ async function apiPostProduct(prod){
 }
 async function apiPatchPrice(id, price){
   if(!useApi) return null;
+  if(window.SupabaseSync && SupabaseSync.isConfigured()){
+    try{
+      const saved = await SupabaseSync.updateProduct(id, {price});
+      if(saved) return saved;
+    }catch(e){ console.log('Supabase PATCH fail', e.message); }
+  }
   const bases = [getApiBase(), 'https://reason-widely-continent-sorry.trycloudflare.com'];
   for(const base of bases){
     try{

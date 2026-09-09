@@ -7,7 +7,7 @@ import argparse, json, hashlib, os, datetime, shutil, pathlib
 
 BASE = pathlib.Path(__file__).parent.resolve()
 VERSION_JSON = BASE / "version.json"
-FILES = ["index.html","app.js","style.css","manifest.json","updater.js"]
+FILES = ["index.html","app.js","style.css","manifest.json","updater.js","supabase_sync.js"]
 # icon.png نضيفه لو تغير
 
 def sha256_file(p):
