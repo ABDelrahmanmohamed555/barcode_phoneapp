@@ -1,5 +1,18 @@
 [
   {
+    "id": 48,
+    "name": "كاوتشة غسالة فريش",
+    "barcode": "8800853818256",
+    "category": "قطع غيار",
+    "price": 0.0,
+    "stock": 28,
+    "description": "",
+    "image_path": "",
+    "barcode_path": "/home/kali/Desktop/prot/assets/barcodes/8800853818256.png",
+    "created_at": "2026-09-09 19:13:59",
+    "updated_at": "2026-09-09 19:13:59"
+  },
+  {
     "id": 38,
     "name": "كاوتشة غسالة توشيبا",
     "barcode": "8809987644250",
