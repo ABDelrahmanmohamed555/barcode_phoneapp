@@ -1,18 +1,5 @@
 [
   {
-    "id": 50,
-    "name": "ترموستات 6",
-    "barcode": "8806816384363",
-    "category": "قطع غيار",
-    "price": 0.0,
-    "stock": 8,
-    "description": "",
-    "image_path": "",
-    "barcode_path": "/home/kali/Desktop/prot/assets/barcodes/8806816384363.png",
-    "created_at": "2026-09-09 20:22:45",
-    "updated_at": "2026-09-09 20:22:45"
-  },
-  {
     "id": 38,
     "name": "كاوتشة غسالة توشيبا",
     "barcode": "8809987644250",
