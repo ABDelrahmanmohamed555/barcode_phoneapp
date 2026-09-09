@@ -78,6 +78,11 @@ let selected=null;
 function _saveLocal(){
   try{ localStorage.setItem('prot_products', JSON.stringify(products)); }catch(e){}
 }
+// منع الوميض — تتبع آخر hash مرسوم
+let _lastTableHash="", _lastUserHash="", _lastPricingHash="";
+function _hashList(arr){
+  try{ return JSON.stringify(arr.map(p=> p.id+":"+p.price+":"+p.stock+":"+p.name).join("|")); }catch(e){ return ""; }
+}
 
 // --- تتبع المحذوفات لمنع الرجوع (tombstone) ---
 const DELETED_KEY = 'deleted_barcodes';
@@ -544,6 +549,12 @@ function renderTable(){
   const body=document.getElementById('tableBody');
   if(!body) return;
   const q=(searchEl ? searchEl.value : "").trim().toLowerCase();
+  // منع الوميض: لا تعيد الرسم إذا البيانات نفسها
+  try{
+    const curHash = _hashList(products) + "|q:" + q;
+    if(curHash === _lastTableHash && body.children.length>0) return;
+    _lastTableHash = curHash;
+  }catch(e){}
   body.innerHTML="";
   const filtered=products.filter(p=>{
     if(!q) return true;
@@ -630,6 +641,11 @@ function renderUserTable(){
   const q=(document.getElementById('searchUser').value||"").trim().toLowerCase();
   const body=document.getElementById('userTableBody');
   if(!body) return;
+  try{
+    const curHash = _hashList(products.filter(p=> parseFloat(p.price) !== 0)) + "|q:" + q;
+    if(curHash === _lastUserHash && body.children.length>0) return;
+    _lastUserHash = curHash;
+  }catch(e){}
   body.innerHTML="";
   const pricedProducts = products.filter(p=> parseFloat(p.price) !== 0 && p.price !== null && p.price !== '' );
   const filtered=pricedProducts.filter(p=>{
@@ -664,6 +680,11 @@ function renderPricingTable(){
   const q=(document.getElementById('searchPricing').value||"").trim().toLowerCase();
   const body=document.getElementById('pricingTableBody');
   if(!body) return;
+  try{
+    const curHash = _hashList(products.filter(p=>!p.price || parseFloat(p.price)===0)) + "|q:" + q;
+    if(curHash === _lastPricingHash && body.children.length>0) return;
+    _lastPricingHash = curHash;
+  }catch(e){}
   body.innerHTML="";
   let filtered=products.filter(p=>!p.price || parseFloat(p.price)===0);
   if(q){
@@ -795,8 +816,8 @@ try{ document.getElementById('apiUrl').textContent=getApiBase(); }catch(e){}
 syncFromLocalFile().then(()=> syncFromApi());
 initSupabaseRealtime();
 setTimeout(()=>{ try{ const el=document.getElementById('apiUrl'); if(el) el.textContent=getApiBase(); }catch(e){} }, 3500);
-// مزامنة في الخلفية كل 4 ثواني — بدون وميض (المزامنة تدمج فقط لو فيه جديد)
-setInterval(()=>{ syncFromApi(); }, 4000);
+// مزامنة في الخلفية كل 8 ثواني — بدون وميض (المزامنة تدمج فقط لو فيه جديد + منع إعادة الرسم)
+setInterval(()=>{ syncFromApi(); }, 8000);
 setInterval(()=>{ if(window.SupabaseSync && SupabaseSync.isConfigured() && !_supaRealtimeActive) initSupabaseRealtime(); }, 8000);
 
 // يتعرف على ريزولوشن الشاشة
