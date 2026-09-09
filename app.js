@@ -94,7 +94,7 @@ let _supaRealtimeActive = false;
 
 function _applyProducts(newData, source){
   if(!Array.isArray(newData)) return false;
-  // تطبيع: تأكد من الحقول
+  // تطبيع
   const normalized = newData.map(p=>({
     id: p.id,
     name: p.name||'',
@@ -108,13 +108,62 @@ function _applyProducts(newData, source){
     created_at: p.created_at||'',
     updated_at: p.updated_at||''
   }));
-  if(JSON.stringify(normalized) === JSON.stringify(products)) return false;
-  products = normalized;
-  _saveLocal();
-  renderUserTable(); renderPricingTable();
-  const tb=document.getElementById('tableBody'); if(tb) renderTable();
-  console.log(`✓ تحديث ${normalized.length} منتج من ${source}`);
-  return true;
+  // دمج ذكي بدل استبدال كامل — يحل مشكلة الرجوع
+  // 1) ابنِ خريطة المحلي بالباركود
+  const byBarcode = {};
+  const byId = {};
+  products.forEach(p=>{ if(p.barcode) byBarcode[p.barcode]=p; byId[p.id]=p; });
+  let changed = false;
+  let added = 0, updated = 0;
+  for(const rp of normalized){
+    if(!rp.barcode) continue;
+    const local = byBarcode[rp.barcode] || byId[rp.id];
+    if(!local){
+      // منتج جديد من السحابة
+      products.push(rp);
+      changed = true; added++;
+    } else {
+      // قارن updated_at — احتفظ بالأحدث
+      const rTime = rp.updated_at || rp.created_at || "";
+      const lTime = local.updated_at || local.created_at || "";
+      // لو السحابي أحدث أو نفس الوقت لكن القيم مختلفة، حدث
+      const needUpdate = (rTime > lTime) || (rTime===lTime && (parseFloat(rp.price)!==parseFloat(local.price) || parseInt(rp.stock)!==parseInt(local.stock) || rp.name!==local.name));
+      // لو المحلي أحدث، لا ترجع لقديم
+      const localNewer = lTime > rTime;
+      if(localNewer){
+        // تجاهل السحابي القديم — حافظ على المحلي
+        continue;
+      }
+      if(needUpdate){
+        // حدث الحقول
+        let diff = false;
+        for(const k of ['name','barcode','category','price','stock','description','image_path','barcode_path','updated_at','created_at']){
+          if(String(rp[k]||'') !== String(local[k]||'')){
+            local[k]=rp[k];
+            diff=true;
+          }
+        }
+        if(diff){ changed=true; updated++; }
+      }
+    }
+  }
+  // لا نحذف منتجات محلية غير موجودة في السحابة (لمنع ضياع بيانات لم تُرفع بعد)
+  if(changed){
+    // ترتيب حسب id desc مثل السيرفر
+    products.sort((a,b)=> (b.id||0)-(a.id||0));
+    _saveLocal();
+    renderUserTable(); renderPricingTable();
+    const tb=document.getElementById('tableBody'); if(tb) renderTable();
+    console.log(`✓ دمج ${normalized.length} من ${source} (+${added} جديد، ~${updated} تحديث)`);
+    return true;
+  }
+  // لو لا تغيير بالدمج، تحقق لو العدد أو الترتيب اختلف فقط
+  if(JSON.stringify(normalized)!==JSON.stringify(products)){
+    // لا نستبدل كاملاً إذا الدمج لم يغير — نحافظ على المحلي
+    console.log(`[sync] تجاهل استبدال كامل من ${source} — المحلي أحدث`);
+    return false;
+  }
+  return false;
 }
 
 async function syncFromGitHub(){
