@@ -1,23 +1,24 @@
 {
-  "version": "2.4",
-  "build": 21,
-  "date": "2026-09-09T18:22:56",
-  "notes": "تثبيت نهائي لشريط مزامن أزرق - مزامنة خلفية بدون وميض",
+  "version": "2.5",
+  "build": 22,
+  "date": "2026-09-09T19:55:58",
+  "notes": "إصلاح مزامنة الحذف - حذف المنتج من التليفون عند حذفه من الكمبيوتر",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "a1716de1d18defe912a6e9ca76f994346861b44f1176083ee81c5ded194a618a",
+    "app.js": "73e70817cf28bbf78fb8daf1739734f0942d4fe44d40664e262b05eb9963b398",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
     "index.html": "c3de69b15cb580982ecf8be287c20f18cd006339860cffbeb0c14a4dcd8db049",
     "manifest.json": "f8d7763eb253611f38a9fe7f4fbb2da93da9f651d8c1daa1554ada9325dcb927",
-    "products.json": "762770c338006649163345ac528eb4af2c4ba1743ba01fcd7a1fc56f3304b861",
+    "products.json": "da11278d69797165c8cb6019ed2139714387a611b3b4dd05f6dcdfee425165ef",
     "style.css": "4351f20b2d0bf7c68ad02e5315373a1c08b5785f0c76f9895187bc60334c77c8",
-    "supabase_sync.js": "6253d2d5d399ced5c27275b096cfe8de31a5bf2fccfbbe178d6092b9851ef51b",
+    "supabase_sync.js": "cd5bb73f5e3cb9c0cbce51d12fa84f90d7874c41f2ce68c12dcec144cf3cd3b4",
     "sw.js": "28b82fbb525968eab2ef8ab599d4aa0866b12b535bf3631651f2bf2fef8607bf",
     "updater.js": "038e87a5f2b032f63fbd3e226cec7b25d9055f17946e7089f07f28e06a9f349c",
-    "version.json": "9ec6cdb70d8f727fa20140fbc1bec0fbc52bec0dea8d288c09f733fa18e9ba58"
+    "version.json": "d73d4fac8875e2b7e3dfca87e9ed549b2ef451c57b5b368db1a1fd8e1675ecd6"
   },
   "changelog": [
+    "2.5 - إصلاح مزامنة الحذف - حذف المنتج من التليفون عند حذفه من الكمبيوتر (2026-09-09)",
     "2.4 - تثبيت نهائي لشريط مزامن أزرق - مزامنة خلفية بدون وميض (2026-09-09)",
     "2.3 - إصلاح تحميل OTA لـ app.js - منع وميض مزامن (2026-09-09)",
     "2.2 - تثبيت شريط المزامنة ومنع وميض القائمة - تحديث في الخلفية (2026-09-09)",
@@ -36,7 +37,6 @@
     "1.0.4 - تحديث تلقائي كامل + GitHub (2026-09-08)",
     "1.0.3 - فحص GitHub update+رقم + مزامنة منتجات سحابية (2026-09-08)",
     "1.0.2 - دعم التحديث عبر الإنترنت Cloudflare (2026-09-08)",
-    "1.0.1 - دعم التحديث عبر الإنترنت GitHub (2026-09-08)",
-    "1.0.1 - تحديث تلقائي للسيرفر - اكتشاف IP بدون إدخال (2026-09-08)"
+    "1.0.1 - دعم التحديث عبر الإنترنت GitHub (2026-09-08)"
   ]
 }
