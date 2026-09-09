@@ -256,6 +256,7 @@ function _applyProducts(newData, source){
     }
     if(toDelete.length>0){
       for(const d of toDelete){
+        try{ _recordDeleted(d.barcode); }catch(e){}
         products = products.filter(p=> p.barcode !== d.barcode);
         deleted++;
       }
