@@ -180,5 +180,16 @@
     "barcode_path": "/home/kali/Desktop/prot/assets/barcodes/8807684468568.png",
     "created_at": "2026-09-02 09:03:50",
     "updated_at": "2026-09-09 12:30:55"
+  },
+  {
+    "id": 999,
+    "name": "منتج من التليفون",
+    "barcode": "8809999999999",
+    "category": "أجهزة",
+    "price": 123,
+    "stock": 7,
+    "description": "from phone",
+    "created_at": "2026-09-09 12:30:00",
+    "updated_at": "2026-09-09 12:30:00"
   }
 ]
