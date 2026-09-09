@@ -79,6 +79,55 @@ function _saveLocal(){
   try{ localStorage.setItem('prot_products', JSON.stringify(products)); }catch(e){}
 }
 
+// --- تتبع المحذوفات لمنع الرجوع (tombstone) ---
+const DELETED_KEY = 'deleted_barcodes';
+function _getDeletedMap(){
+  try{
+    const raw = localStorage.getItem(DELETED_KEY);
+    if(!raw) return {};
+    const j = JSON.parse(raw);
+    return (j && typeof j==='object') ? j : {};
+  }catch(e){ return {}; }
+}
+function _saveDeletedMap(m){
+  try{ localStorage.setItem(DELETED_KEY, JSON.stringify(m)); }catch(e){}
+}
+function _recordDeleted(barcode){
+  if(!barcode) return;
+  try{
+    const m = _getDeletedMap();
+    m[String(barcode).trim()] = new Date().toISOString().slice(0,19).replace('T',' ');
+    // احتفظ بآخر 200 فقط، نظف الأقدم من 60 يوم
+    const keys = Object.keys(m);
+    if(keys.length>200){
+      const sorted = keys.map(k=> [k, m[k]]).sort((a,b)=> a[1].localeCompare(b[1]));
+      for(let i=0;i< sorted.length-200;i++) delete m[sorted[i][0]];
+    }
+    _saveDeletedMap(m);
+  }catch(e){}
+}
+function _isDeleted(barcode, remoteTime){
+  if(!barcode) return false;
+  try{
+    const m = _getDeletedMap();
+    const delTime = m[String(barcode).trim()];
+    if(!delTime) return false;
+    if(!remoteTime) return true;
+    // لو الحذف أحدث من تحديث السحابة → لا ترجع
+    return delTime >= (remoteTime||'');
+  }catch(e){ return false; }
+}
+function _clearDeleted(barcode){
+  if(!barcode) return;
+  try{
+    const m = _getDeletedMap();
+    if(m[String(barcode).trim()]){
+      delete m[String(barcode).trim()];
+      _saveDeletedMap(m);
+    }
+  }catch(e){}
+}
+
 // --- مزامنة لحظية جذرية: Supabase Realtime + GitHub + Local API ---
 const GITHUB_REPO = 'ABDelrahmanmohamed555/barcode_phoneapp';
 const GITHUB_PRODUCTS_RAW = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/products.json`;
@@ -129,9 +178,16 @@ function _applyProducts(newData, source){
   let added = 0, updated = 0;
   for(const rp of normalized){
     if(!rp.barcode) continue;
+    // منع رجوع المنتج المحذوف
+    try{
+      const rTime = rp.updated_at || rp.created_at || "";
+      if(_isDeleted(rp.barcode, rTime)){
+        continue;
+      }
+    }catch(e){}
     const local = byBarcode[rp.barcode] || byId[rp.id];
     if(!local){
-      // منتج جديد من السحابة
+      // منتج جديد من السحابة — لكن تأكد أنه ليس محذوف
       products.push(rp);
       changed = true; added++;
     } else {
@@ -159,14 +215,54 @@ function _applyProducts(newData, source){
       }
     }
   }
-  // لا نحذف منتجات محلية غير موجودة في السحابة (لمنع ضياع بيانات لم تُرفع بعد)
+  // معالجة الحذف: منتج محلي غير موجود في السحابة → احذفه (لمنع الرجوع)
+  let deleted = 0;
+  if(normalized.length>0){
+    // حماية من الحذف الجماعي لو السحابة ناقصة
+    if(normalized.length < Math.max(1, products.length * 0.5) && products.length > 5){
+      if(products.length - normalized.length > 5){
+        // fetch جزئي - تجاهل
+      } else {
+        // فرق صغير مسموح
+      }
+    }
+    const remoteBarcodes = new Set(normalized.map(p=> String(p.barcode||'').trim()).filter(Boolean));
+    const toDelete = [];
+    // لو الفرق كبير تجاهل الحذف الجماعي
+    const diff = products.length - normalized.length;
+    const shouldBulkDelete = !(normalized.length < products.length * 0.5 && diff > 5);
+    if(shouldBulkDelete){
+      for(const lp of [...products]){
+        const bc = String(lp.barcode||'').trim();
+        if(!bc || remoteBarcodes.has(bc)) continue;
+        // لو هذا الباركود محذوف محلياً أصلاً لا نحذفه مرة أخرى
+        try{ if(_isDeleted(bc)) continue; }catch(e){}
+        const lTime = lp.updated_at||lp.created_at||'';
+        // لو المحلي حديث جداً (أقل من 30 ثانية) لا تحذفه — قد يكون لم يُرفع بعد
+        let isNew = false;
+        try{
+          const age = Date.now() - new Date(lTime.replace(' ','T')).getTime();
+          if(!isNaN(age) && age < 30000) isNew = true;
+        }catch{}
+        if(isNew) continue;
+        // أي منتج محلي قديم غير موجود في السحابة → اعتبره محذوف من السحابة
+        toDelete.push(lp);
+      }
+    }
+    if(toDelete.length>0){
+      for(const d of toDelete){
+        products = products.filter(p=> p.barcode !== d.barcode);
+        deleted++;
+      }
+      changed = true;
+    }
+  }
   if(changed){
-    // ترتيب حسب id desc مثل السيرفر
     products.sort((a,b)=> (b.id||0)-(a.id||0));
     _saveLocal();
     renderUserTable(); renderPricingTable();
     const tb=document.getElementById('tableBody'); if(tb) renderTable();
-    console.log(`✓ دمج ${normalized.length} من ${source} (+${added} جديد، ~${updated} تحديث)`);
+    console.log(`✓ دمج ${normalized.length} من ${source} (+${added} جديد، ~${updated} تحديث، -${deleted} حذف)`);
     return true;
   }
   // لو لا تغيير بالدمج، تحقق لو العدد أو الترتيب اختلف فقط
@@ -386,9 +482,12 @@ function clearForm(){
 async function saveProduct(){
   const name=pName.value.trim(), barcode=pBarcode.value.trim(), cat=pCat.value, price=parseFloat(pPrice.value||0), stock=parseInt(pStock.value||0), desc=pDesc.value.trim();
   if(!name) return alert("ادخل اسم المنتج");
+  // لو الباركود كان محذوف سابقاً وتمت إعادة إنشائه عمداً — امسح tombstone
+  try{ if(barcode) _clearDeleted(barcode); }catch(e){}
   // حتى لو price 0 يحفظ تلقائياً (محلي + API + سحابي)
   const saved = await apiPostProduct({name, barcode, category:cat, price, stock, description:desc});
   if(saved && saved.id){
+    try{ if(saved.barcode) _clearDeleted(saved.barcode); }catch(e){}
     // تم الحفظ عبر Supabase أو API - حدث المحلي فوراً
     const exists = products.find(p=> p.id===saved.id || p.barcode===saved.barcode);
     if(!exists) products.unshift(saved);
@@ -406,7 +505,9 @@ async function saveProduct(){
   // fallback محلي + GitHub
   const id=Math.max(0,...products.map(p=>p.id))+1;
   const nowStr = new Date().toISOString().slice(0,19).replace('T',' ');
-  const newProd={id,name,barcode:barcode||"880"+Date.now(),category:cat,price,stock,description:desc, created_at: nowStr, updated_at: nowStr};
+  const finalBarcode = barcode||"880"+Date.now();
+  try{ _clearDeleted(finalBarcode); }catch(e){}
+  const newProd={id,name,barcode:finalBarcode,category:cat,price,stock,description:desc, created_at: nowStr, updated_at: nowStr};
   products.unshift(newProd);
   _saveLocal();
   renderUserTable();
@@ -461,10 +562,20 @@ function renderTable(){
 }
 function editProd(id){ const p=products.find(x=>x.id===id); if(!p) return; pName.value=p.name; pBarcode.value=p.barcode; pCat.value=p.category; pPrice.value=p.price; pStock.value=p.stock; pDesc.value=p.description||p.desc||""; window.scrollTo(0,0); }
 function delProd(id){
-  // حاول حذف من Supabase أيضاً
+  const toDel = products.find(p=> p.id===id);
+  const bc = toDel ? toDel.barcode : null;
+  if(bc) _recordDeleted(bc);
+  // حاول حذف من Supabase أيضاً (id و باركود)
   if(window.SupabaseSync && SupabaseSync.isConfigured()){
-    SupabaseSync.deleteProduct(id).catch(()=>{});
+    SupabaseSync.deleteProduct(id, bc).catch(()=>{});
   }
+  // أيضاً حاول حذف بالباركود عبر API المحلي إذا متاح
+  try{
+    if(bc){
+      fetch(getApiBase()+`/api/products/by_barcode/${encodeURIComponent(bc)}`, {method:'DELETE'}).catch(()=>{});
+      fetch(getApiBase()+`/api/products/${id}`, {method:'DELETE'}).catch(()=>{});
+    }
+  }catch(e){}
   products=products.filter(p=>p.id!==id); _saveLocal(); renderUserTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); renderPricingTable();
   githubPushProducts(products, `delete product ${id}`).catch(()=>{});
 }

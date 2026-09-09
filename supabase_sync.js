@@ -92,8 +92,16 @@
     return null;
   }
 
-  async function deleteProduct(id){
-    await supaFetch(`${TABLE}?id=eq.${id}`, {method:'DELETE'});
+  async function deleteProduct(id, barcode){
+    // حذف بالـ id ثم بالـ barcode للتأكد (id قد يختلف بين SQLite و Supabase)
+    try{
+      await supaFetch(`${TABLE}?id=eq.${id}`, {method:'DELETE'});
+    }catch(e){}
+    if(barcode){
+      try{
+        await supaFetch(`${TABLE}?barcode=eq.${encodeURIComponent(barcode)}`, {method:'DELETE'});
+      }catch(e){}
+    }
     return true;
   }
 
