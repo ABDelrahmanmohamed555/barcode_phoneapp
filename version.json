@@ -1,23 +1,24 @@
 {
-  "version": "2.2",
-  "build": 19,
-  "date": "2026-09-09T17:34:09",
-  "notes": "تثبيت شريط المزامنة ومنع وميض القائمة - تحديث في الخلفية",
+  "version": "2.3",
+  "build": 20,
+  "date": "2026-09-09T17:37:53",
+  "notes": "إصلاح تحميل OTA لـ app.js - منع وميض مزامن",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
     "app.js": "a1716de1d18defe912a6e9ca76f994346861b44f1176083ee81c5ded194a618a",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
-    "index.html": "6f86df39fe131f67d4a40138e97340f8bc578d3f047ade8ea0f30acb63e4bea6",
+    "index.html": "c3de69b15cb580982ecf8be287c20f18cd006339860cffbeb0c14a4dcd8db049",
     "manifest.json": "f8d7763eb253611f38a9fe7f4fbb2da93da9f651d8c1daa1554ada9325dcb927",
     "products.json": "ab23c3fa1b5ee5f6794b9d088dc058de159d9caf89c0e10eeee684e6bdbb62f2",
     "style.css": "4351f20b2d0bf7c68ad02e5315373a1c08b5785f0c76f9895187bc60334c77c8",
     "supabase_sync.js": "6253d2d5d399ced5c27275b096cfe8de31a5bf2fccfbbe178d6092b9851ef51b",
     "sw.js": "28b82fbb525968eab2ef8ab599d4aa0866b12b535bf3631651f2bf2fef8607bf",
     "updater.js": "038e87a5f2b032f63fbd3e226cec7b25d9055f17946e7089f07f28e06a9f349c",
-    "version.json": "2c8f6e8d0eea7dcb3e59fd2dbce53929f9c92a70ee3d282441f880b892961178"
+    "version.json": "d9a2e0344a23b9f78e8c5c8b1eabb10ce4c03262a74f7ca51bf9f54b34c21aca"
   },
   "changelog": [
+    "2.3 - إصلاح تحميل OTA لـ app.js - منع وميض مزامن (2026-09-09)",
     "2.2 - تثبيت شريط المزامنة ومنع وميض القائمة - تحديث في الخلفية (2026-09-09)",
     "1.11 - تثبيت شريط المزامنة ومنع وميض القائمة - تحديث في الخلفية (2026-09-09)",
     "1.10 - تحديث هوائي شامل - أي ملف جديد ينزل تلقائياً بدون تثبيت (2026-09-09)",

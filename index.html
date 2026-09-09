@@ -9,8 +9,27 @@
 <link rel="apple-touch-icon" href="icon.png"/>
 <link rel="manifest" href="manifest.json"/>
 <link rel="stylesheet" href="style.css"/>
-<script src="supabase_sync.js"></script>
 <script src="updater.js"></script>
+<script>
+// OTA loader لسحب supabase_sync.js المحدث قبل تحميل الأصلي — يضمن أن أي إصلاح للسحابة يطبق بدون APK
+(function(){
+  try{
+    const ver = localStorage.getItem('ota_version');
+    const cur = "1.0.0";
+    const otaSupa = localStorage.getItem('ota_supabase_sync.js');
+    if(otaSupa && ver && ver !== cur){
+      const s=document.createElement('script');
+      s.textContent=otaSupa;
+      document.write(s.outerHTML);
+      console.log('[OTA loader] supabase_sync.js من OTA', ver);
+    } else {
+      document.write('<script src="supabase_sync.js"><\/script>');
+    }
+  }catch(e){
+    document.write('<script src="supabase_sync.js"><\/script>');
+  }
+})();
+</script>
 <script>if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js").catch(()=>{});}</script>
 </head>
 <body>
@@ -228,7 +247,33 @@ window.addEventListener('load', ()=>{
   }
 });
 </script>
-<script src="app.js"></script>
+<script>
+// OTA loader لـ app.js — يحمّل النسخة المحدثة هوائياً بدون الحاجة لـ APK
+(function(){
+  try{
+    const ver = localStorage.getItem('ota_version');
+    const cur = "1.0.0";
+    const otaApp = localStorage.getItem('ota_app.js');
+    if(otaApp && ver && ver !== cur){
+      // احذف أي script app.js قديم لو موجود
+      const old=document.querySelector('script[src="app.js"]');
+      if(old) old.remove();
+      const s=document.createElement('script');
+      s.textContent=otaApp;
+      document.currentScript.parentNode.insertBefore(s, document.currentScript);
+      console.log('[OTA loader] app.js من OTA', ver);
+    } else {
+      const s=document.createElement('script');
+      s.src='app.js';
+      document.currentScript.parentNode.insertBefore(s, document.currentScript);
+    }
+  }catch(e){
+    const s=document.createElement('script');
+    s.src='app.js';
+    document.currentScript.parentNode.insertBefore(s, document.currentScript);
+  }
+})();
+</script>
 <script>
 // اعرض نسخة OTA الحالية + حدّثها عند التحميل
 try{
