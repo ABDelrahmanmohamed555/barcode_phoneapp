@@ -123,25 +123,27 @@ async function syncFromGitHub(){
     }
   }catch(e){ console.log('GitHub API fail', e.message); }
   // 2) fallback Raw (بدون token، للقراءة فقط)
-  try{
-    const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 6000);
-    const r = await fetch(GITHUB_PRODUCTS_RAW + '?_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal});
-    clearTimeout(t);
-    if(!r.ok) throw new Error(r.status);
-    const data = await r.json();
-    if(Array.isArray(data) && data.length>=0){
-      if(JSON.stringify(data) !== JSON.stringify(products)){
-        products = data;
-        _saveLocal();
-        renderUserTable(); renderPricingTable();
-        const tb=document.getElementById('tableBody'); if(tb) renderTable();
+  for(const rawUrl of [GITHUB_PRODUCTS_RAW, `https://corsproxy.io/?${encodeURIComponent(GITHUB_PRODUCTS_RAW)}`, `https://api.allorigins.win/raw?url=${encodeURIComponent(GITHUB_PRODUCTS_RAW)}`]){
+    try{
+      const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 6000);
+      const r = await fetch(rawUrl + (rawUrl.includes('?')?'&':'?') + '_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal, mode:'cors', credentials:'omit'});
+      clearTimeout(t);
+      if(!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      if(Array.isArray(data) && data.length>=0){
+        if(JSON.stringify(data) !== JSON.stringify(products)){
+          products = data;
+          _saveLocal();
+          renderUserTable(); renderPricingTable();
+          const tb=document.getElementById('tableBody'); if(tb) renderTable();
+        }
+        const badge=document.getElementById('syncStatus');
+        if(badge){ badge.textContent=`سحابي ✓ ${products.length}`; badge.style.color='#2d8a4e'; }
+        console.log(`✓ مزامنة GitHub Raw: ${products.length} منتج via ${rawUrl.slice(0,30)}`);
+        return true;
       }
-      const badge=document.getElementById('syncStatus');
-      if(badge){ badge.textContent=`سحابي ✓ ${products.length}`; badge.style.color='#2d8a4e'; }
-      console.log(`✓ مزامنة GitHub Raw: ${products.length} منتج`);
-      return true;
-    }
-  }catch(e){ console.log('GitHub Raw fail', e.message); }
+    }catch(e){ console.log('GitHub Raw fail', rawUrl.slice(0,30), e.message); }
+  }
   return false;
 }
 async function githubPushProducts(newProducts, message){
