@@ -18,10 +18,11 @@ try{
   }
 }catch(e){}
 if(!Array.isArray(products)) products=[];
-// --- migration: حذف المنتجات الستة العالقة بسعر 0 (كانت تظهر في تسعير) ---
+// --- migration: حذف المنتجات الستة العالقة بسعر 0 (مرة واحدة فقط) ---
 (function(){
   try{
-    const bad = ["8803901533378","8809987644250","8803873034354","8809404749629","8802242127031","8802242127031"];
+    if(localStorage.getItem('migration_6_fixed_v37')) return;
+    const bad = ["8803901533378","8809987644250","8803873034354","8809404749629","8802242127031"];
     // نظف localStorage
     try{
       const ls = localStorage.getItem('prot_products');
@@ -53,6 +54,7 @@ if(!Array.isArray(products)) products=[];
       for(const b of bad){ if(dm[b]){ delete dm[b]; ch=true; } }
       if(ch) localStorage.setItem('deleted_barcodes', JSON.stringify(dm));
     }catch(e){}
+    try{ localStorage.setItem('migration_6_fixed_v37','1'); }catch(e){}
   }catch(e){}
 })();
 
