@@ -1,23 +1,24 @@
 {
   "version": "new",
-  "build": 33,
-  "date": "2026-09-12T16:52:07",
-  "notes": "بناء نظيف new - السحابة فقط بدون GitHub/Local",
+  "build": 34,
+  "date": "2026-09-12T17:11:10",
+  "notes": "بناء نظيف new - السحابة فقط بدون GitHub/Local - إصلاح init cache",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "71bc0068b02ae878daf78c00356a6111e0f7703c600310bfdfc454bf7502f567",
+    "app.js": "47368f3b9d11a483df525bf9da03494b194ff55516e09aa2e3cfa6a1b5a5ebfc",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
     "index.html": "b481565ce163d8cade146601479de3d0fa3f5701fd683c86b833f25ae186b91b",
     "manifest.json": "f8d7763eb253611f38a9fe7f4fbb2da93da9f651d8c1daa1554ada9325dcb927",
     "products.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
     "style.css": "4351f20b2d0bf7c68ad02e5315373a1c08b5785f0c76f9895187bc60334c77c8",
     "supabase_sync.js": "ef3ca1d1cf066adab0839987974086dce9751cedca3e988949139db48f70e689",
-    "sw.js": "396339fd96152b79afc3fb93b41eb40a3ff378e8b0d1adfc66a2d9b6887a4b42",
+    "sw.js": "3176681e2018058abc3ee4fd98faad8ec8a9d01435ef2cd1f391f3511bc6b90f",
     "updater.js": "02414257b0fde3ba738e3248aed1e79f91cef53096fe28c87cd86723c6ef0bde",
-    "version.json": "f8cd2abe0aa67536126ffdf94af9532fa5680b226d0810085cb481a85bdf6116"
+    "version.json": "a8c586659feb517b32e16a45168f0e124c248ace7c67b44269b9ea074e70aba7"
   },
   "changelog": [
+    "new - بناء نظيف new - السحابة فقط بدون GitHub/Local - إصلاح init cache (2026-09-12)",
     "new - بناء نظيف new - السحابة فقط بدون GitHub/Local (2026-09-12)",
     "3.2.1 - إصدار 3.2.1 - بناء APK نظيف متزامن مع السحابة فقط (قراءة وكتابة) (2026-09-12)",
     "3.1 - السحابة هي المصدر الوحيد - إصلاح بقاء المحذوفات في الهاتف (2026-09-12)",
@@ -36,7 +37,6 @@
     "1.11 - تثبيت شريط المزامنة ومنع وميض القائمة - تحديث في الخلفية (2026-09-09)",
     "1.10 - تحديث هوائي شامل - أي ملف جديد ينزل تلقائياً بدون تثبيت (2026-09-09)",
     "1.10 - اختبار ملف جديد تلقائي (2026-09-09)",
-    "1.9 - حل جذري مزامنة لحظية كاملة Supabase+GitHub+Local (2026-09-09)",
-    "1.8 - حل جذري مزامنة Supabase لحظية (2026-09-09)"
+    "1.9 - حل جذري مزامنة لحظية كاملة Supabase+GitHub+Local (2026-09-09)"
   ]
 }

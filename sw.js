@@ -37,7 +37,7 @@ self.addEventListener('fetch', e=>{
     return;
   }
   // حل جذري للوميض والـ cache القديم: app.js و supabase_sync.js و products.json دائماً من الشبكة أولاً
-  if(url.pathname.match(/(app\.js|supabase_sync\.js|products\.json)$/)){
+  if(url.pathname.match(/(app\.js|supabase_sync\.js)$/)){
     e.respondWith(
       fetch(e.request, {cache:'no-store'}).then(resp=>{
         if(resp.ok){

@@ -9,11 +9,12 @@ const sample = [
   {id:14, name:"شربون صاروخ ماكيتا 9 بوصة", barcode:"8807684468568", category:"قطع غيار", price:50, stock:17},
 ];
 let products=[];
+let _cachedProducts=null;
 try{
   const ls = localStorage.getItem('prot_products');
   if(ls){
     const parsed = JSON.parse(ls);
-    if(Array.isArray(parsed)) products = parsed;
+    if(Array.isArray(parsed) && parsed.length>0) _cachedProducts = parsed;
   }
 }catch(e){}
 if(!Array.isArray(products)) products=[];
@@ -126,6 +127,15 @@ async function syncFromApi(){
     }
   }catch(e){
     console.log('Supabase fail', e.message);
+    // offline: اعرض الكاش فقط إذا فشلت السحابة
+    if(_cachedProducts && Array.isArray(_cachedProducts) && _cachedProducts.length>0 && products.length===0){
+      console.log('[sync] عرض الكاش المحلي (offline) مؤقتاً');
+      products = _cachedProducts.slice();
+      _saveLocal();
+      renderUserTable(); renderPricingTable();
+      const tb=document.getElementById('tableBody'); if(tb) renderTable();
+      _setBadge(products.length);
+    }
     _syncFailCount++;
     if(_syncFailCount >= 2){
       const badge=document.getElementById('syncStatus');
