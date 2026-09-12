@@ -686,29 +686,45 @@ window.addEventListener('orientationchange', ()=> setTimeout(applyScreenSize, 25
 if(window.visualViewport) window.visualViewport.addEventListener('resize', _debouncedApply);
 applyScreenSize();
 
-// === فحص إضافي بعد التحميل: لو السحابة فارغة لكن لا يزال هناك كاش، امسحه بعد 2 ثانية ===
-setTimeout(async ()=>{
+// === تنظيف خلفي تلقائي مع كل فتحة — يعمل بدون فتح clear_cache.html ===
+async function backgroundAutoClean(){
   try{
-    if(window.SupabaseSync && SupabaseSync.isConfigured()){
-      const d=await SupabaseSync.getProducts();
-      if(Array.isArray(d) && d.length===0){
-        // تأكد أن المحلي فارغ
-        let needWipe=false;
-        try{
-          const ls = localStorage.getItem('prot_products');
-          if(ls){
-            const arr=JSON.parse(ls);
-            if(Array.isArray(arr) && arr.length>0) needWipe=true;
-          }
-        }catch(e){}
-        if(products.length>0) needWipe=true;
-        if(needWipe){
-          console.log('[post-check] سحابة فارغة لكن محلي متسخ — مسح فوري');
-          _nukeAllCaches({silent:true});
-          _setBadge(0);
-          try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+    if(!window.SupabaseSync || !SupabaseSync.isConfigured()) return;
+    const d = await SupabaseSync.getProducts();
+    if(!Array.isArray(d)) return;
+    if(d.length===0){
+      let needWipe=false;
+      try{
+        const ls = localStorage.getItem('prot_products');
+        if(ls){
+          const arr=JSON.parse(ls);
+          if(Array.isArray(arr) && arr.length>0) needWipe=true;
+        }
+      }catch(e){}
+      if(products.length>0) needWipe=true;
+      // أيضاً لو كان هناك OTA قديم عالق
+      try{
+        const ver=localStorage.getItem('ota_version');
+        const otaApp=localStorage.getItem('ota_app.js')||'';
+        if(ver==='new' && otaApp && !otaApp.includes('migration_v4_done')) needWipe=true;
+      }catch(e){}
+      if(needWipe){
+        console.log('[BG-clean] سحابة فارغة لكن محلي متسخ — مسح خلفي صامت');
+        _nukeAllCaches({silent:true});
+        _setBadge(0);
+        try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+        // أيضاً نظف ServiceWorker كاش في الخلفية
+        if('caches' in window){
+          caches.keys().then(keys=> Promise.all(keys.filter(k=> k.includes('nahal-ota')).map(k=> caches.delete(k)))).catch(()=>{});
         }
       }
     }
   }catch(e){}
-}, 2500);
+}
+// فحص أولي بعد 2.5 ثانية (كان موجود)
+setTimeout(backgroundAutoClean, 2500);
+// مع كل فتحة للتطبيق (حتى لو من الخلفية)
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') setTimeout(backgroundAutoClean, 800); });
+window.addEventListener('focus', ()=> setTimeout(backgroundAutoClean, 800));
+// كل 30 ثانية في الخلفية
+setInterval(backgroundAutoClean, 30000);
