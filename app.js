@@ -1,26 +1,11 @@
-// phone app/app.js — مزامنة سحابية فقط عبر Supabase — نسخة 4.0 حل جذري للمنتجات العالقة
-// المصدر الوحيد: Supabase → phone و desktop
-// LocalStorage فقط كـ cache/offline وليس مصدراً — يمسح تلقائياً إذا السحابة فارغة
+// phone app/app.js — مزامنة جديدة فقط عبر Supabase — نسخة 3.3 نظيفة
+// السحابة هي المصدر الوحيد — لا منتجات قديمة، لا كاش قديم، لا migration
+// تم مسح كل ما يخص المنتجات القديمة والتعارضات
 
-const sample = [
-  {id:17, name:"مفتاح انجليزي 10 بوصة", barcode:"8801000000011", category:"أجهزة", price:0, stock:5},
-  {id:16, name:"ثاوزان تنظيف مواسير", barcode:"8808717568194", category:"إكسسوارات", price:10, stock:17},
-  {id:15, name:"ترموستات كوري", barcode:"8807523246425", category:"قطع غيار", price:150, stock:10},
-  {id:14, name:"شربون صاروخ ماكيتا 9 بوصة", barcode:"8807684468568", category:"قطع غيار", price:50, stock:17},
-];
 let products=[];
-let _cachedProducts=null;
-try{
-  const ls = localStorage.getItem('prot_products');
-  if(ls){
-    const parsed = JSON.parse(ls);
-    if(Array.isArray(parsed) && parsed.length>0) _cachedProducts = parsed;
-  }
-}catch(e){}
-if(!Array.isArray(products)) products=[];
-
 let cart=[];
 let selected=null;
+
 function _saveLocal(){
   try{ localStorage.setItem('prot_products', JSON.stringify(products)); }catch(e){}
 }
@@ -31,15 +16,14 @@ function _hashList(arr){
 function _clearCache(){
   try{ localStorage.removeItem('prot_products'); }catch(e){}
 }
-// === حل جذري: مسح شامل فوري لكل الكاشات ===
+// === مسح شامل فوري — جديد فقط ===
 function _nukeAllCaches(opts={}){
   const silent = !!opts.silent;
   try{
-    // 1) localStorage
     try{ localStorage.removeItem('prot_products'); }catch(e){}
     try{ localStorage.removeItem('deleted_barcodes'); }catch(e){}
     try{ localStorage.removeItem('migration_6_fixed_v37'); }catch(e){}
-    // مسح كل OTA
+    try{ localStorage.removeItem('migration_v4_done'); }catch(e){}
     try{
       for(let i=localStorage.length-1;i>=0;i--){
         const k=localStorage.key(i);
@@ -49,14 +33,11 @@ function _nukeAllCaches(opts={}){
       localStorage.removeItem('ota_github_sha');
       localStorage.removeItem('ota_ignore_version');
     }catch(e){}
-    _cachedProducts = null;
     products = [];
     try{ localStorage.setItem('prot_products', JSON.stringify([])); }catch(e){}
-    // 2) Cache API
     if('caches' in window){
       caches.keys().then(keys=> Promise.all(keys.map(k=> caches.delete(k)))).catch(()=>{});
     }
-    // 3) IndexedDB (إن وجد)
     try{
       if(window.indexedDB && indexedDB.databases){
         indexedDB.databases().then(dbs=>{ dbs.forEach(db=>{ try{ indexedDB.deleteDatabase(db.name); }catch(e){} }); }).catch(()=>{});
@@ -67,9 +48,8 @@ function _nukeAllCaches(opts={}){
   }catch(e){ console.log('[NUKE] fail', e.message); }
 }
 window.nukeAllData = function(){
-  if(confirm('مسح شامل لكل المنتجات العالقة والكاش؟ سيتم إعادة التحميل من السحابة الفارغة.')){
+  if(confirm('مسح شامل لكل الكاش؟ سيتم إعادة التحميل من السحابة.')){
     _nukeAllCaches();
-    // مسح إضافي قوي
     try{ localStorage.clear(); }catch(e){}
     try{ localStorage.setItem('prot_products', JSON.stringify([])); }catch(e){}
     if('caches' in window){
@@ -79,85 +59,16 @@ window.nukeAllData = function(){
   }
 };
 window.forceWipe = function(){
-  // بدون confirm - للاستخدام البرمجي أو عبر ?nuke
   _nukeAllCaches({silent:true});
   try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
   _setBadge(0);
-  console.log('[forceWipe] done');
 };
-// Auto nuke via URL ?nuke أو #nuke أو ?clear
 try{
   const _url = location.href || "";
   if(_url.includes('nuke') || _url.includes('clear') || _url.includes('wipe')){
-    console.log('[auto-nuke] URL trigger detected');
     setTimeout(()=>{ _nukeAllCaches({silent:true}); try{ location.replace(location.pathname); }catch(e){} }, 800);
   }
 }catch(e){}
-
-// --- migration جذري: حذف كل المنتجات العالقة (يعمل كل مرة حتى ينظف) ---
-(function(){
-  try{
-    // قائمة موسعة تشمل كل الباركودات العالقة المعروفة + العينات
-    const bad = [
-      "8803901533378","8809987644250","8803873034354","8809404749629","8802242127031",
-      "8801000000011","8808717568194","8807523246425","8807684468568"
-    ];
-    let cleaned = false;
-    // نظف localStorage حتى لو migration تم سابقاً - idempotent
-    try{
-      const ls = localStorage.getItem('prot_products');
-      if(ls){
-        let arr = JSON.parse(ls);
-        if(Array.isArray(arr) && arr.length>0){
-          const before = arr.length;
-          // فلتر الباركودات السيئة
-          let filtered = arr.filter(p=> !bad.includes(String(p.barcode||"").trim()));
-          // لو لا يزال هناك منتجات بسعر 0 وعددها كبير عالق، احتفظ بالمنطق العام:
-          // لكن لا نحذف تلقائياً كل سعر 0 هنا، سيتم حذفه عند تأكد أن السحابة فارغة في _applyProducts
-          if(filtered.length !== arr.length){
-            localStorage.setItem('prot_products', JSON.stringify(filtered));
-            console.log('[migration v4] localStorage cleaned', before, '->', filtered.length);
-            cleaned = true;
-          }
-          // حدث _cachedProducts ليتوافق مع التنظيف
-          if(_cachedProducts){
-            const beforeC = _cachedProducts.length;
-            _cachedProducts = _cachedProducts.filter(p=> !bad.includes(String(p.barcode||"").trim()));
-            if(_cachedProducts.length !== beforeC){
-              console.log('[migration v4] _cachedProducts cleaned', beforeC, '->', _cachedProducts.length);
-              if(_cachedProducts.length===0) _cachedProducts = null;
-            }
-          }
-        }
-      }
-    }catch(e){ console.log('[migration] ls fail', e.message); }
-    // نظف products الحالية (نادر لأنها [] عند البداية، لكن للاحتياط)
-    if(Array.isArray(products) && products.length){
-      const before = products.length;
-      const filtered = products.filter(p=> !bad.includes(String(p.barcode||"").trim()));
-      if(filtered.length !== before){
-        products = filtered;
-        _saveLocal();
-        console.log('[migration v4] products cleaned', before, '->', filtered.length);
-        cleaned = true;
-      }
-    }
-    // نظف deleted_barcodes
-    try{
-      const dm = JSON.parse(localStorage.getItem('deleted_barcodes')||'{}');
-      let ch=false;
-      for(const b of bad){ if(dm[b]){ delete dm[b]; ch=true; } }
-      if(ch){ localStorage.setItem('deleted_barcodes', JSON.stringify(dm)); cleaned=true; }
-    }catch(e){}
-    // لو كان هناك أي تنظيف، أعد تعيين الهاشات
-    if(cleaned){
-      _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
-    }
-    // اجعل migration idempotent لكن احتفظ بالعلامة
-    try{ localStorage.setItem('migration_6_fixed_v37','1'); }catch(e){}
-    try{ localStorage.setItem('migration_v4_done','1'); }catch(e){}
-  }catch(e){ console.log('[migration v4] fail', e.message); }
-})();
 
 window.forceCloudSync = async ()=>{
   try{
@@ -182,17 +93,11 @@ window.clearLocalCache = ()=>{
       localStorage.removeItem('ota_version');
       localStorage.removeItem('ota_github_sha');
       localStorage.removeItem('ota_ignore_version');
-      // مسح كل شيء إضافي
-      _cachedProducts=null;
     }catch(e){}
     if('caches' in window){
-      caches.keys().then(keys=> Promise.all(keys.map(k=> caches.delete(k)))).then(()=>{
-        location.reload();
-      });
+      caches.keys().then(keys=> Promise.all(keys.map(k=> caches.delete(k)))).then(()=> location.reload());
       setTimeout(()=> location.reload(), 900);
-    } else {
-      location.reload();
-    }
+    } else location.reload();
   }
 };
 window.clearAllAppMemory = window.clearLocalCache;
@@ -225,7 +130,6 @@ function _applyProducts(newData, source){
     created_at: p.created_at||'',
     updated_at: p.updated_at||''
   })).filter(p=> p.barcode);
-  // === حل جذري: إذا السحابة فارغة امسح كل المحلي فوراً حتى لو كان في كاش ===
   if(normalized.length===0){
     const hadLocal = products.length>0;
     let hadStorage = false;
@@ -236,11 +140,9 @@ function _applyProducts(newData, source){
         if(Array.isArray(arr) && arr.length>0) hadStorage = true;
       }
     }catch(e){}
-    // حتى لو products فارغ لكن localStorage مليان، امسحه
     try{ localStorage.setItem('prot_products', JSON.stringify([])); }catch(e){}
-    _cachedProducts = null;
     if(hadLocal || hadStorage){
-      console.log(`[APPLY] سحابة فارغة ${source} — مسح كل المحلي ${hadLocal?products.length:0} + storage ${hadStorage?'dirty':''}`);
+      console.log(`[APPLY] سحابة فارغة ${source} — مسح كل المحلي`);
       products = [];
       _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
       _saveLocal();
@@ -248,17 +150,13 @@ function _applyProducts(newData, source){
       _setBadge(0);
       return true;
     }
-    // لو كان products أصلاً فارغ و storage تم مسحه، فقط تأكد من العرض
     if(products.length===0){
-      // تأكد أن storage نظيف (حتى لو كان same)
       _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
       try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
       _setBadge(0);
-      // لا حاجة لإعادة الحفظ إذا كان بالفعل []
       return false;
     }
   }
-  // السحابة هي المصدر الوحيد — استبدال كامل
   const oldHash = _hashList(products);
   const newHash = _hashList(normalized);
   const same = products.length===normalized.length && products.every(pr=>{
@@ -266,14 +164,12 @@ function _applyProducts(newData, source){
     return np && String(np.price)===String(pr.price) && String(np.stock)===String(pr.stock) && np.name===pr.name;
   });
   if(same && oldHash===newHash){
-    // حتى لو نفس البيانات، تأكد أن localStorage متزامن (لا يبقى متسخ)
     try{
       const ls = localStorage.getItem('prot_products');
       if(ls){
         const parsed = JSON.parse(ls);
         if(Array.isArray(parsed) && parsed.length!==normalized.length){
           localStorage.setItem('prot_products', JSON.stringify(normalized));
-          console.log('[APPLY] sync storage dirty -> fixed', parsed.length, '->', normalized.length);
         }
       } else {
         localStorage.setItem('prot_products', JSON.stringify(normalized));
@@ -285,14 +181,6 @@ function _applyProducts(newData, source){
   products = normalized.slice().sort((a,b)=> (b.id||0)-(a.id||0));
   _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
   _saveLocal();
-  // نظف _cachedProducts لأنه لم يعد مصدراً
-  try{
-    if(_cachedProducts){
-      // حدثه ليتطابق مع السحابة
-      _cachedProducts = products.slice();
-      if(_cachedProducts.length===0) _cachedProducts=null;
-    }
-  }catch(e){}
   renderUserTable(); renderPricingTable();
   const tb=document.getElementById('tableBody'); if(tb) renderTable();
   console.log(`✓ سحابة ${source}: ${prevCount} -> ${products.length}`);
@@ -310,15 +198,11 @@ async function syncFromApi(){
     if(Array.isArray(data)){
       _applyProducts(data, 'Supabase');
       _setBadge(products.length);
-      console.log(`✓ Supabase: ${data.length} منتج`);
       _syncFailCount = 0;
       return;
     }
   }catch(e){
     console.log('Supabase fail', e.message);
-    // === لا ترجع الكاش المحلي أبداً — السحابة هي الحقيقة ===
-    // حتى لو فشل الاتصال، ابقِ العرض الحالي ولا تعيد المنتجات المحذوفة
-    // فقط اعرض حالة عدم الاتصال
     _syncFailCount++;
     if(_syncFailCount >= 2){
       const badge=document.getElementById('syncStatus');
@@ -702,7 +586,6 @@ async function backgroundAutoClean(){
         }
       }catch(e){}
       if(products.length>0) needWipe=true;
-      // أيضاً لو كان هناك OTA قديم عالق
       try{
         const ver=localStorage.getItem('ota_version');
         const otaApp=localStorage.getItem('ota_app.js')||'';
@@ -713,7 +596,6 @@ async function backgroundAutoClean(){
         _nukeAllCaches({silent:true});
         _setBadge(0);
         try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
-        // أيضاً نظف ServiceWorker كاش في الخلفية
         if('caches' in window){
           caches.keys().then(keys=> Promise.all(keys.filter(k=> k.includes('nahal-ota')).map(k=> caches.delete(k)))).catch(()=>{});
         }
@@ -721,10 +603,7 @@ async function backgroundAutoClean(){
     }
   }catch(e){}
 }
-// فحص أولي بعد 2.5 ثانية (كان موجود)
 setTimeout(backgroundAutoClean, 2500);
-// مع كل فتحة للتطبيق (حتى لو من الخلفية)
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') setTimeout(backgroundAutoClean, 800); });
 window.addEventListener('focus', ()=> setTimeout(backgroundAutoClean, 800));
-// كل 30 ثانية في الخلفية
 setInterval(backgroundAutoClean, 30000);

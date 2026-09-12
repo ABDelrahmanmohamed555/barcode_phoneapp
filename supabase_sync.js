@@ -16,14 +16,9 @@
       const url = localStorage.getItem(KEY_URL);
       const key = localStorage.getItem(KEY_KEY);
       if(url && key && url.trim() && key.trim()){
-        // تجاهل القيم الفارغة أو القديمة
         const u = url.trim().replace(/\/+$/,'');
         const k = key.trim();
-        if(u && k){
-          // لو كان المخزن لمشروع قديم غير موجود، استخدم الافتراضي
-          if(u.includes('zvbdfkdhradhkqdywcal')) return {url: DEFAULT_URL, key: DEFAULT_KEY};
-          return {url: u, key: k};
-        }
+        if(u && k) return {url: u, key: k};
       }
     }catch(e){}
     return {url: DEFAULT_URL, key: DEFAULT_KEY};

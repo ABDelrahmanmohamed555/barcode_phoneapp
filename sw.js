@@ -1,6 +1,6 @@
-// sw.js — Service Worker حل جذري للكاش العالق — v4.0
+// sw.js — Service Worker مزامنة جديدة فقط — v3.3 نظيف
 const CACHE_PREFIX = 'nahal-ota-';
-let CURRENT_CACHE = CACHE_PREFIX + 'v4.0';
+let CURRENT_CACHE = CACHE_PREFIX + 'v3.3';
 
 const ASSETS = [
   './',
@@ -16,7 +16,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e=>{
-  console.log('[SW v4] install - clearing old caches');
+  console.log('[SW 3.3] install - نظيف');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(keys.filter(k=> k.startsWith(CACHE_PREFIX) && k!==CURRENT_CACHE).map(k=> caches.delete(k))))
     .then(()=> caches.open(CURRENT_CACHE).then(c=> c.addAll(ASSETS).catch(()=>{}))).then(()=> self.skipWaiting())
@@ -24,7 +24,7 @@ self.addEventListener('install', e=>{
 });
 
 self.addEventListener('activate', e=>{
-  console.log('[SW v4] activate - purge');
+  console.log('[SW 3.3] activate');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(
       keys.filter(k=> k.startsWith(CACHE_PREFIX) && k!==CURRENT_CACHE).map(k=> { console.log('[SW] delete',k); return caches.delete(k); })
