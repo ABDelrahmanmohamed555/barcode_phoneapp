@@ -18,6 +18,44 @@ try{
   }
 }catch(e){}
 if(!Array.isArray(products)) products=[];
+// --- migration: حذف المنتجات الستة العالقة بسعر 0 (كانت تظهر في تسعير) ---
+(function(){
+  try{
+    const bad = ["8803901533378","8809987644250","8803873034354","8809404749629","8802242127031","8802242127031"];
+    // نظف localStorage
+    try{
+      const ls = localStorage.getItem('prot_products');
+      if(ls){
+        let arr = JSON.parse(ls);
+        if(Array.isArray(arr)){
+          const filtered = arr.filter(p=> !bad.includes(String(p.barcode||"").trim()));
+          if(filtered.length !== arr.length){
+            localStorage.setItem('prot_products', JSON.stringify(filtered));
+            console.log('[migration] localStorage cleaned', arr.length, '->', filtered.length);
+          }
+        }
+      }
+    }catch(e){}
+    // نظف products الحالية
+    if(Array.isArray(products) && products.length){
+      const before = products.length;
+      const filtered = products.filter(p=> !bad.includes(String(p.barcode||"").trim()));
+      if(filtered.length !== before){
+        products = filtered;
+        _saveLocal();
+        console.log('[migration] products cleaned', before, '->', filtered.length);
+      }
+    }
+    // نظف deleted_barcodes أيضاً إذا كانت تحتوي القديم
+    try{
+      const dm = JSON.parse(localStorage.getItem('deleted_barcodes')||'{}');
+      let ch=false;
+      for(const b of bad){ if(dm[b]){ delete dm[b]; ch=true; } }
+      if(ch) localStorage.setItem('deleted_barcodes', JSON.stringify(dm));
+    }catch(e){}
+  }catch(e){}
+})();
+
 let cart=[];
 let selected=null;
 function _saveLocal(){
