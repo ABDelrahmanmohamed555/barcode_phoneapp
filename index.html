@@ -11,6 +11,35 @@
 <link rel="stylesheet" href="style.css"/>
 <script src="updater.js"></script>
 <script>
+// حل جذري فوري: تنظيف OTA العالقة (new -> 4.0) قبل أي تحميل
+(function(){
+  try{
+    const ver = localStorage.getItem('ota_version');
+    const otaApp = localStorage.getItem('ota_app.js')||'';
+    const isOldOTA = ver==='new' && otaApp && !otaApp.includes('migration_v4_done') && otaApp.includes('migration_6_fixed_v37');
+    if(isOldOTA){
+      console.log('[OTA FIX] اكتشاف OTA قديم (new) -> مسح لإجبار 4.0');
+      localStorage.removeItem('ota_app.js');
+      localStorage.removeItem('ota_supabase_sync.js');
+      localStorage.removeItem('ota_version');
+      localStorage.removeItem('ota_github_sha');
+      localStorage.removeItem('ota_ignore_version');
+      // لا نعمل reload هنا، سيتم تحميل app.js الجديد مباشرة
+    }
+    if(location.search.includes('nuke')||location.hash.includes('nuke')||location.search.includes('clear')){
+      console.log('[OTA FIX] nuke param -> wipe');
+      try{
+        localStorage.removeItem('prot_products');
+        localStorage.removeItem('deleted_barcodes');
+        for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')) localStorage.removeItem(k); }
+        localStorage.removeItem('ota_version');
+        localStorage.setItem('prot_products','[]');
+      }catch(e){}
+    }
+  }catch(e){}
+})();
+</script>
+<script>
 // OTA loader لسحب supabase_sync.js المحدث قبل تحميل الأصلي — يضمن أن أي إصلاح للسحابة يطبق بدون APK
 (function(){
   try{

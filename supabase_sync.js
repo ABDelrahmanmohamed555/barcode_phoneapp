@@ -65,6 +65,10 @@
 
   async function addProduct(prod){
     // upsert بالـ barcode لمنع التكرار والرجوع — أي تعديل يدمج لا يستبدل
+    // توليد id إذا غير موجود (Supabase يتطلب id ليس null)
+    if(!prod.id){
+      try{ prod.id = Date.now() + Math.floor(Math.random()*10000); }catch(e){ prod.id = Math.floor(Math.random()*1e9)+100000; }
+    }
     try{
       const cfg = getConfig();
       if(!cfg) throw new Error('Supabase not configured');

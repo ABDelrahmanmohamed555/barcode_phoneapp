@@ -1,6 +1,6 @@
-// phone app/app.js — مزامنة سحابية فقط عبر Supabase (قراءة/كتابة) — نسخة نظيفة new
+// phone app/app.js — مزامنة سحابية فقط عبر Supabase — نسخة 4.0 حل جذري للمنتجات العالقة
 // المصدر الوحيد: Supabase → phone و desktop
-// LocalStorage فقط كـ cache/offline وليس مصدراً
+// LocalStorage فقط كـ cache/offline وليس مصدراً — يمسح تلقائياً إذا السحابة فارغة
 
 const sample = [
   {id:17, name:"مفتاح انجليزي 10 بوصة", barcode:"8801000000011", category:"أجهزة", price:0, stock:5},
@@ -18,61 +18,147 @@ try{
   }
 }catch(e){}
 if(!Array.isArray(products)) products=[];
-// --- migration: حذف المنتجات الستة العالقة بسعر 0 (مرة واحدة فقط) ---
-(function(){
-  try{
-    if(localStorage.getItem('migration_6_fixed_v37')) return;
-    const bad = ["8803901533378","8809987644250","8803873034354","8809404749629","8802242127031"];
-    // نظف localStorage
-    try{
-      const ls = localStorage.getItem('prot_products');
-      if(ls){
-        let arr = JSON.parse(ls);
-        if(Array.isArray(arr)){
-          const filtered = arr.filter(p=> !bad.includes(String(p.barcode||"").trim()));
-          if(filtered.length !== arr.length){
-            localStorage.setItem('prot_products', JSON.stringify(filtered));
-            console.log('[migration] localStorage cleaned', arr.length, '->', filtered.length);
-          }
-        }
-      }
-    }catch(e){}
-    // نظف products الحالية
-    if(Array.isArray(products) && products.length){
-      const before = products.length;
-      const filtered = products.filter(p=> !bad.includes(String(p.barcode||"").trim()));
-      if(filtered.length !== before){
-        products = filtered;
-        _saveLocal();
-        console.log('[migration] products cleaned', before, '->', filtered.length);
-      }
-    }
-    // نظف deleted_barcodes أيضاً إذا كانت تحتوي القديم
-    try{
-      const dm = JSON.parse(localStorage.getItem('deleted_barcodes')||'{}');
-      let ch=false;
-      for(const b of bad){ if(dm[b]){ delete dm[b]; ch=true; } }
-      if(ch) localStorage.setItem('deleted_barcodes', JSON.stringify(dm));
-    }catch(e){}
-    try{ localStorage.setItem('migration_6_fixed_v37','1'); }catch(e){}
-  }catch(e){}
-})();
 
 let cart=[];
 let selected=null;
 function _saveLocal(){
   try{ localStorage.setItem('prot_products', JSON.stringify(products)); }catch(e){}
 }
-// منع الوميض
 let _lastTableHash="", _lastUserHash="", _lastPricingHash="";
 function _hashList(arr){
   try{ return JSON.stringify(arr.map(p=> p.id+":"+p.price+":"+p.stock+":"+p.name).join("|")); }catch(e){ return ""; }
 }
-
-// --- Cache helper ---
 function _clearCache(){
   try{ localStorage.removeItem('prot_products'); }catch(e){}
 }
+// === حل جذري: مسح شامل فوري لكل الكاشات ===
+function _nukeAllCaches(opts={}){
+  const silent = !!opts.silent;
+  try{
+    // 1) localStorage
+    try{ localStorage.removeItem('prot_products'); }catch(e){}
+    try{ localStorage.removeItem('deleted_barcodes'); }catch(e){}
+    try{ localStorage.removeItem('migration_6_fixed_v37'); }catch(e){}
+    // مسح كل OTA
+    try{
+      for(let i=localStorage.length-1;i>=0;i--){
+        const k=localStorage.key(i);
+        if(k && k.startsWith('ota_')) localStorage.removeItem(k);
+      }
+      localStorage.removeItem('ota_version');
+      localStorage.removeItem('ota_github_sha');
+      localStorage.removeItem('ota_ignore_version');
+    }catch(e){}
+    _cachedProducts = null;
+    products = [];
+    try{ localStorage.setItem('prot_products', JSON.stringify([])); }catch(e){}
+    // 2) Cache API
+    if('caches' in window){
+      caches.keys().then(keys=> Promise.all(keys.map(k=> caches.delete(k)))).catch(()=>{});
+    }
+    // 3) IndexedDB (إن وجد)
+    try{
+      if(window.indexedDB && indexedDB.databases){
+        indexedDB.databases().then(dbs=>{ dbs.forEach(db=>{ try{ indexedDB.deleteDatabase(db.name); }catch(e){} }); }).catch(()=>{});
+      }
+    }catch(e){}
+    _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
+    if(!silent) console.log('[NUKE] تم مسح كل الكاشات ✓');
+  }catch(e){ console.log('[NUKE] fail', e.message); }
+}
+window.nukeAllData = function(){
+  if(confirm('مسح شامل لكل المنتجات العالقة والكاش؟ سيتم إعادة التحميل من السحابة الفارغة.')){
+    _nukeAllCaches();
+    // مسح إضافي قوي
+    try{ localStorage.clear(); }catch(e){}
+    try{ localStorage.setItem('prot_products', JSON.stringify([])); }catch(e){}
+    if('caches' in window){
+      caches.keys().then(keys=> Promise.all(keys.map(k=> caches.delete(k)))).then(()=> location.reload());
+      setTimeout(()=> location.reload(), 900);
+    } else location.reload();
+  }
+};
+window.forceWipe = function(){
+  // بدون confirm - للاستخدام البرمجي أو عبر ?nuke
+  _nukeAllCaches({silent:true});
+  try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+  _setBadge(0);
+  console.log('[forceWipe] done');
+};
+// Auto nuke via URL ?nuke أو #nuke أو ?clear
+try{
+  const _url = location.href || "";
+  if(_url.includes('nuke') || _url.includes('clear') || _url.includes('wipe')){
+    console.log('[auto-nuke] URL trigger detected');
+    setTimeout(()=>{ _nukeAllCaches({silent:true}); try{ location.replace(location.pathname); }catch(e){} }, 800);
+  }
+}catch(e){}
+
+// --- migration جذري: حذف كل المنتجات العالقة (يعمل كل مرة حتى ينظف) ---
+(function(){
+  try{
+    // قائمة موسعة تشمل كل الباركودات العالقة المعروفة + العينات
+    const bad = [
+      "8803901533378","8809987644250","8803873034354","8809404749629","8802242127031",
+      "8801000000011","8808717568194","8807523246425","8807684468568"
+    ];
+    let cleaned = false;
+    // نظف localStorage حتى لو migration تم سابقاً - idempotent
+    try{
+      const ls = localStorage.getItem('prot_products');
+      if(ls){
+        let arr = JSON.parse(ls);
+        if(Array.isArray(arr) && arr.length>0){
+          const before = arr.length;
+          // فلتر الباركودات السيئة
+          let filtered = arr.filter(p=> !bad.includes(String(p.barcode||"").trim()));
+          // لو لا يزال هناك منتجات بسعر 0 وعددها كبير عالق، احتفظ بالمنطق العام:
+          // لكن لا نحذف تلقائياً كل سعر 0 هنا، سيتم حذفه عند تأكد أن السحابة فارغة في _applyProducts
+          if(filtered.length !== arr.length){
+            localStorage.setItem('prot_products', JSON.stringify(filtered));
+            console.log('[migration v4] localStorage cleaned', before, '->', filtered.length);
+            cleaned = true;
+          }
+          // حدث _cachedProducts ليتوافق مع التنظيف
+          if(_cachedProducts){
+            const beforeC = _cachedProducts.length;
+            _cachedProducts = _cachedProducts.filter(p=> !bad.includes(String(p.barcode||"").trim()));
+            if(_cachedProducts.length !== beforeC){
+              console.log('[migration v4] _cachedProducts cleaned', beforeC, '->', _cachedProducts.length);
+              if(_cachedProducts.length===0) _cachedProducts = null;
+            }
+          }
+        }
+      }
+    }catch(e){ console.log('[migration] ls fail', e.message); }
+    // نظف products الحالية (نادر لأنها [] عند البداية، لكن للاحتياط)
+    if(Array.isArray(products) && products.length){
+      const before = products.length;
+      const filtered = products.filter(p=> !bad.includes(String(p.barcode||"").trim()));
+      if(filtered.length !== before){
+        products = filtered;
+        _saveLocal();
+        console.log('[migration v4] products cleaned', before, '->', filtered.length);
+        cleaned = true;
+      }
+    }
+    // نظف deleted_barcodes
+    try{
+      const dm = JSON.parse(localStorage.getItem('deleted_barcodes')||'{}');
+      let ch=false;
+      for(const b of bad){ if(dm[b]){ delete dm[b]; ch=true; } }
+      if(ch){ localStorage.setItem('deleted_barcodes', JSON.stringify(dm)); cleaned=true; }
+    }catch(e){}
+    // لو كان هناك أي تنظيف، أعد تعيين الهاشات
+    if(cleaned){
+      _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
+    }
+    // اجعل migration idempotent لكن احتفظ بالعلامة
+    try{ localStorage.setItem('migration_6_fixed_v37','1'); }catch(e){}
+    try{ localStorage.setItem('migration_v4_done','1'); }catch(e){}
+  }catch(e){ console.log('[migration v4] fail', e.message); }
+})();
+
 window.forceCloudSync = async ()=>{
   try{
     if(!window.SupabaseSync || !SupabaseSync.isConfigured()){ alert('Supabase غير مهيأ'); return; }
@@ -87,26 +173,29 @@ window.clearLocalCache = ()=>{
     try{
       _clearCache();
       localStorage.removeItem('deleted_barcodes');
-      // مسح كل كاش OTA
+      localStorage.removeItem('migration_6_fixed_v37');
+      localStorage.removeItem('migration_v4_done');
       for(let i=localStorage.length-1;i>=0;i--){
         const k=localStorage.key(i);
         if(k && k.startsWith('ota_')) localStorage.removeItem(k);
       }
       localStorage.removeItem('ota_version');
+      localStorage.removeItem('ota_github_sha');
+      localStorage.removeItem('ota_ignore_version');
+      // مسح كل شيء إضافي
+      _cachedProducts=null;
     }catch(e){}
-    // مسح Cache API (Service Worker)
     if('caches' in window){
       caches.keys().then(keys=> Promise.all(keys.map(k=> caches.delete(k)))).then(()=>{
         location.reload();
       });
-      setTimeout(()=> location.reload(), 800);
+      setTimeout(()=> location.reload(), 900);
     } else {
       location.reload();
     }
   }
 };
-window.clearAllAppMemory = window.clearLocalCache; // alias للطلب "مسح ذاكرة التطبيق"
-
+window.clearAllAppMemory = window.clearLocalCache;
 
 let _supaRealtimeActive = false;
 let _lastBadgeCount = -1;
@@ -136,19 +225,74 @@ function _applyProducts(newData, source){
     created_at: p.created_at||'',
     updated_at: p.updated_at||''
   })).filter(p=> p.barcode);
+  // === حل جذري: إذا السحابة فارغة امسح كل المحلي فوراً حتى لو كان في كاش ===
+  if(normalized.length===0){
+    const hadLocal = products.length>0;
+    let hadStorage = false;
+    try{
+      const ls = localStorage.getItem('prot_products');
+      if(ls){
+        const arr = JSON.parse(ls);
+        if(Array.isArray(arr) && arr.length>0) hadStorage = true;
+      }
+    }catch(e){}
+    // حتى لو products فارغ لكن localStorage مليان، امسحه
+    try{ localStorage.setItem('prot_products', JSON.stringify([])); }catch(e){}
+    _cachedProducts = null;
+    if(hadLocal || hadStorage){
+      console.log(`[APPLY] سحابة فارغة ${source} — مسح كل المحلي ${hadLocal?products.length:0} + storage ${hadStorage?'dirty':''}`);
+      products = [];
+      _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
+      _saveLocal();
+      try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+      _setBadge(0);
+      return true;
+    }
+    // لو كان products أصلاً فارغ و storage تم مسحه، فقط تأكد من العرض
+    if(products.length===0){
+      // تأكد أن storage نظيف (حتى لو كان same)
+      _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
+      try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+      _setBadge(0);
+      // لا حاجة لإعادة الحفظ إذا كان بالفعل []
+      return false;
+    }
+  }
   // السحابة هي المصدر الوحيد — استبدال كامل
   const oldHash = _hashList(products);
   const newHash = _hashList(normalized);
-  // تحقق سريع
   const same = products.length===normalized.length && products.every(pr=>{
     const np = normalized.find(x=> x.barcode===pr.barcode);
     return np && String(np.price)===String(pr.price) && String(np.stock)===String(pr.stock) && np.name===pr.name;
   });
-  if(same && oldHash===newHash) return false;
+  if(same && oldHash===newHash){
+    // حتى لو نفس البيانات، تأكد أن localStorage متزامن (لا يبقى متسخ)
+    try{
+      const ls = localStorage.getItem('prot_products');
+      if(ls){
+        const parsed = JSON.parse(ls);
+        if(Array.isArray(parsed) && parsed.length!==normalized.length){
+          localStorage.setItem('prot_products', JSON.stringify(normalized));
+          console.log('[APPLY] sync storage dirty -> fixed', parsed.length, '->', normalized.length);
+        }
+      } else {
+        localStorage.setItem('prot_products', JSON.stringify(normalized));
+      }
+    }catch(e){}
+    return false;
+  }
   const prevCount = products.length;
   products = normalized.slice().sort((a,b)=> (b.id||0)-(a.id||0));
   _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
   _saveLocal();
+  // نظف _cachedProducts لأنه لم يعد مصدراً
+  try{
+    if(_cachedProducts){
+      // حدثه ليتطابق مع السحابة
+      _cachedProducts = products.slice();
+      if(_cachedProducts.length===0) _cachedProducts=null;
+    }
+  }catch(e){}
   renderUserTable(); renderPricingTable();
   const tb=document.getElementById('tableBody'); if(tb) renderTable();
   console.log(`✓ سحابة ${source}: ${prevCount} -> ${products.length}`);
@@ -156,23 +300,9 @@ function _applyProducts(newData, source){
 }
 
 async function syncFromApi(){
-  // السحابة فقط
   if(!window.SupabaseSync || !window.SupabaseSync.isConfigured()){
     const badge=document.getElementById('syncStatus');
     if(badge){ badge.textContent='غير مهيأ - Supabase'; badge.style.color='#c8943a'; }
-    // حاول عرض الكاش فقط
-    if(products.length===0){
-      try{
-        const ls = localStorage.getItem('prot_products');
-        if(ls){
-          const cached = JSON.parse(ls);
-          if(Array.isArray(cached) && cached.length>0){
-            console.log('[sync] عرض الكاش المحلي (offline)');
-            // لا نستدعي _applyProducts حتى لا نعتبر الكاش مصدراً
-          }
-        }
-      }catch(e){}
-    }
     return;
   }
   try{
@@ -181,19 +311,14 @@ async function syncFromApi(){
       _applyProducts(data, 'Supabase');
       _setBadge(products.length);
       console.log(`✓ Supabase: ${data.length} منتج`);
+      _syncFailCount = 0;
       return;
     }
   }catch(e){
     console.log('Supabase fail', e.message);
-    // offline: اعرض الكاش فقط إذا فشلت السحابة
-    if(_cachedProducts && Array.isArray(_cachedProducts) && _cachedProducts.length>0 && products.length===0){
-      console.log('[sync] عرض الكاش المحلي (offline) مؤقتاً');
-      products = _cachedProducts.slice();
-      _saveLocal();
-      renderUserTable(); renderPricingTable();
-      const tb=document.getElementById('tableBody'); if(tb) renderTable();
-      _setBadge(products.length);
-    }
+    // === لا ترجع الكاش المحلي أبداً — السحابة هي الحقيقة ===
+    // حتى لو فشل الاتصال، ابقِ العرض الحالي ولا تعيد المنتجات المحذوفة
+    // فقط اعرض حالة عدم الاتصال
     _syncFailCount++;
     if(_syncFailCount >= 2){
       const badge=document.getElementById('syncStatus');
@@ -560,3 +685,30 @@ window.addEventListener('resize', _debouncedApply);
 window.addEventListener('orientationchange', ()=> setTimeout(applyScreenSize, 250));
 if(window.visualViewport) window.visualViewport.addEventListener('resize', _debouncedApply);
 applyScreenSize();
+
+// === فحص إضافي بعد التحميل: لو السحابة فارغة لكن لا يزال هناك كاش، امسحه بعد 2 ثانية ===
+setTimeout(async ()=>{
+  try{
+    if(window.SupabaseSync && SupabaseSync.isConfigured()){
+      const d=await SupabaseSync.getProducts();
+      if(Array.isArray(d) && d.length===0){
+        // تأكد أن المحلي فارغ
+        let needWipe=false;
+        try{
+          const ls = localStorage.getItem('prot_products');
+          if(ls){
+            const arr=JSON.parse(ls);
+            if(Array.isArray(arr) && arr.length>0) needWipe=true;
+          }
+        }catch(e){}
+        if(products.length>0) needWipe=true;
+        if(needWipe){
+          console.log('[post-check] سحابة فارغة لكن محلي متسخ — مسح فوري');
+          _nukeAllCaches({silent:true});
+          _setBadge(0);
+          try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+        }
+      }
+    }
+  }catch(e){}
+}, 2500);

@@ -1,36 +1,93 @@
-<!doctype html><html><head><meta charset="utf-8"><title>مسح ذاكرة التطبيق</title></head><body style="font-family:sans-serif;direction:rtl;text-align:center;padding:40px;background:#0d1117;color:#f5f0e3">
-<h2>مسح ذاكرة التطبيق</h2>
-<p>اضغط الزر لمسح المنتجات المخزنة محلياً (LocalStorage + Cache)</p>
-<button onclick="clearAll()" style="padding:12px 24px;background:#c73e3e;color:#fff;border:none;border-radius:8px;font-size:16px">مسح الكل</button>
-<p id="status" style="margin-top:20px;color:#9e9e9e"></p>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>مسح جذري - المنتجات العالقة</title></head><body style="font-family:sans-serif;direction:rtl;text-align:center;padding:30px;background:#0d1117;color:#f5f0e3;min-height:100vh">
+<h2 style="color:#c8943a">🧹 مسح جذري للمنتجات العالقة</h2>
+<p style="color:#9e9e9e">سيتم مسح كل الكاشات تلقائياً: LocalStorage + OTA + Service Worker + IndexedDB</p>
+<div id="log" style="text-align:right;background:#151b23;border:1px solid #2d3543;border-radius:8px;padding:12px;margin:16px 0;font-size:13px;line-height:1.8;max-height:300px;overflow:auto"></div>
+<button id="btn" onclick="clearAll()" style="padding:14px 28px;background:#c73e3e;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:700;width:100%;max-width:320px">مسح فوري الآن</button>
+<p><a href="index.html" style="color:#3a86c8;text-decoration:none;font-size:13px">← العودة للتطبيق</a></p>
+<p id="status" style="margin-top:16px;color:#2d8a4e;font-weight:700"></p>
 <script>
-function clearAll(){
+function log(msg){ const el=document.getElementById('log'); el.innerHTML += msg+"<br>"; console.log(msg); }
+async function clearAll(){
+  const btn=document.getElementById('btn'); if(btn) btn.disabled=true;
+  log('▶ بدء المسح الجذري...');
+  let count=0;
   try{
+    // 1) localStorage prot_products
+    const before = localStorage.getItem('prot_products');
+    if(before){ try{ const a=JSON.parse(before); log('• وجد prot_products: '+(Array.isArray(a)?a.length:0)+' منتج عالق'); }catch(e){ log('• prot_products موجود (raw)'); } }
     localStorage.removeItem('prot_products');
     localStorage.removeItem('deleted_barcodes');
-    localStorage.removeItem('ota_app.js');
-    localStorage.removeItem('ota_supabase_sync.js');
-    localStorage.removeItem('ota_version');
-    // clear all ota_ keys
+    localStorage.removeItem('migration_6_fixed_v37');
+    localStorage.removeItem('migration_v4_done');
+    log('✓ مسح prot_products + deleted_barcodes');
+    // 2) OTA
+    let otaCount=0;
     for(let i=localStorage.length-1;i>=0;i--){
       const k=localStorage.key(i);
-      if(k && k.startsWith('ota_')) localStorage.removeItem(k);
+      if(k && k.startsWith('ota_')){ localStorage.removeItem(k); otaCount++; }
     }
-    // clear Cache API
+    localStorage.removeItem('ota_version');
+    localStorage.removeItem('ota_github_sha');
+    localStorage.removeItem('ota_ignore_version');
+    log('✓ مسح OTA: '+otaCount+' ملف');
+    // 3) أي مفتاح مشبوه
+    const suspicious=['prot_api_base','supabase_url','supabase_key'];
+    // لا نمسح supabase_url/key لأنها مهمة، فقط نعرضها
+    // 4) localStorage overall check
+    log('• المتبقي في localStorage: '+localStorage.length+' مفتاح');
+    // 5) حاول مسح كل شيء إذا لا يزال هناك منتجات
+    try{
+      const ls=localStorage.getItem('prot_products');
+      if(ls && ls!=='[]' && ls!=='null'){ localStorage.setItem('prot_products','[]'); log('✓ فرض prot_products = []'); }
+      else if(!ls){ localStorage.setItem('prot_products','[]'); log('✓ تهيئة prot_products = []'); }
+    }catch(e){}
+    // 6) Cache API
     if('caches' in window){
-      caches.keys().then(keys=> Promise.all(keys.map(k=> caches.delete(k)))).then(()=> {
-        document.getElementById('status').textContent='✓ تم مسح LocalStorage والكاش - أعد فتح التطبيق';
-      });
-    } else {
-      document.getElementById('status').textContent='✓ تم مسح LocalStorage';
+      log('• جاري مسح Cache API...');
+      const keys=await caches.keys();
+      log('• وجد '+keys.length+' كاش');
+      await Promise.all(keys.map(k=> caches.delete(k).then(()=> log('✓ حذف كاش: '+k))));
+      log('✓ تم مسح Cache API');
+    } else log('• Cache API غير مدعوم');
+    // 7) Service Worker
+    if('serviceWorker' in navigator){
+      try{
+        const regs=await navigator.serviceWorker.getRegistrations();
+        for(const r of regs){ await r.unregister(); log('✓ إلغاء ServiceWorker: '+r.scope); }
+      }catch(e){ log('• SW unregister fail: '+e.message); }
     }
-    // also clear products display
-    if(window.products) window.products=[];
+    // 8) IndexedDB
+    try{
+      if(window.indexedDB && indexedDB.databases){
+        const dbs=await indexedDB.databases();
+        for(const db of dbs){ if(db.name){ try{ indexedDB.deleteDatabase(db.name); log('✓ حذف IndexedDB: '+db.name); }catch(e){} } }
+      }
+    }catch(e){ log('• IndexedDB skip: '+e.message); }
+    // 9) حاول إرسال رسالة للـ SW لمسح
+    try{
+      if(navigator.serviceWorker && navigator.serviceWorker.controller){
+        navigator.serviceWorker.controller.postMessage({type:'NUKE_ALL'});
+        log('✓ إرسال NUKE للـ ServiceWorker');
+      }
+    }catch(e){}
+    document.getElementById('status').textContent='✓ تم المسح الجذري بنجاح — سيتم إعادة التحميل';
+    log('✅ اكتمل — إعادة التحميل خلال 1.2 ثانية');
+    // تأكد أن prot_products فارغ
+    try{ localStorage.setItem('prot_products','[]'); }catch(e){}
+    setTimeout(()=>{ location.href='index.html?nuked=1'; }, 1200);
   }catch(e){
     document.getElementById('status').textContent='فشل: '+e.message;
+    log('✗ فشل: '+e.message);
+    if(btn) btn.disabled=false;
   }
 }
-clearAll();
-setTimeout(clearAll, 500);
+// تشغيل تلقائي عند الفتح
+window.addEventListener('load', ()=>{
+  log('تم تحميل الصفحة — مسح تلقائي بعد 700ms');
+  setTimeout(clearAll, 700);
+});
+setTimeout(clearAll, 1200);
+// احتياطي
+setTimeout(()=>{ if(document.getElementById('status').textContent==='') clearAll(); }, 2000);
 </script>
 </body></html>
