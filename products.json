@@ -1,5 +1,18 @@
 [
   {
+    "id": 51,
+    "name": "بدوجن عنوان",
+    "barcode": "8802090253524",
+    "category": "عام",
+    "price": 0.0,
+    "stock": 87,
+    "description": "",
+    "image_path": "",
+    "barcode_path": "/home/kali/Desktop/prot/assets/barcodes/8802090253524.png",
+    "created_at": "2026-09-12 12:47:49",
+    "updated_at": "2026-09-12 12:47:49"
+  },
+  {
     "id": 39,
     "name": "كاوتشة غسالة فريش",
     "barcode": "8803901533378",
