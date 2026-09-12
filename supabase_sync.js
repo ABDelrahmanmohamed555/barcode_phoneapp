@@ -7,13 +7,20 @@
   const KEY_KEY = 'supabase_key';
   const TABLE = 'products';
 
+  // القاعدة الموحدة الجديدة — كل التطبيقين يشاركان نفس Supabase
+  const DEFAULT_URL = 'https://vseycanfadblfmkevoqe.supabase.co';
+  const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzZXljYW5mYWRibGZta2V2b3FlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODk0Mzk4NywiZXhwIjoyMTA0NTE5OTg3fQ.XX6gBLx6t5exMwk0xqnOY8nMSZ00oHq9qdj2jdo223g';
   function getConfig(){
     try{
       const url = localStorage.getItem(KEY_URL);
       const key = localStorage.getItem(KEY_KEY);
-      if(url && key) return {url: url.replace(/\/+$/,''), key: key.trim()};
+      if(url && key){
+        // لو كان المخزن قديم لمشروع zvbd الفارغ، تجاهله واستخدم الجديد
+        if(url.includes('zvbdfkdhradhkqdywcal')) return {url: DEFAULT_URL, key: DEFAULT_KEY};
+        return {url: url.replace(/\/+$/,''), key: key.trim()};
+      }
     }catch(e){}
-    return null;
+    return {url: DEFAULT_URL, key: DEFAULT_KEY};
   }
 
   function setConfig(url, key){
