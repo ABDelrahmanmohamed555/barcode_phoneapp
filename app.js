@@ -220,9 +220,18 @@ function _applyProducts(newData, source){
       }
     }
   }
-  // معالجة الحذف: منتج محلي غير موجود في السحابة → احذفه (لمنع الرجوع)
+  // معالجة الحذف: منتج محلي غير موجود في السحابة → احذفه (لمنع الرجوع) — حل جذري يتعامل حتى مع القائمة الفارغة
   let deleted = 0;
-  if(normalized.length>0){
+  const isAuthoritativeForEmpty = String(source).includes("GitHub") || String(source).includes("Supabase") || String(source).includes("محلي");
+  if(normalized.length===0 && products.length>0 && isAuthoritativeForEmpty){
+    // السحابة فارغة تماماً (كل المنتجات محذوفة) — احذف كل المحلي فوراً
+    for(const lp of [...products]){
+      try{ _recordDeleted(lp.barcode); }catch(e){}
+    }
+    deleted = products.length;
+    products = [];
+    changed = true;
+  } else if(normalized.length>0){
     // حماية من الحذف الجماعي لو السحابة ناقصة
     if(normalized.length < Math.max(1, products.length * 0.5) && products.length > 5){
       if(products.length - normalized.length > 5){
