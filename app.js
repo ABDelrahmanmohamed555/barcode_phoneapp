@@ -75,6 +75,18 @@ try{
   }
 }catch(e){}
 if(!Array.isArray(products)) products=[...sample];
+// إذا كانت السحابة مهيأة، تجاهل العينات المحلية وابدأ فارغاً حتى تأتي السحابة (المصدر الوحيد)
+try{
+  if(window.SupabaseSync && SupabaseSync.isConfigured()){
+    // لو المنتجات الحالية هي مجرد العينات (4 عناصر التجريبية) ولم تأتِ من localStorage حقيقي، صفّرها
+    const isSampleOnly = products.length===sample.length && products.every((pr,i)=> pr.barcode===sample[i].barcode);
+    const hasRealStorage = (()=>{ try{ const v=localStorage.getItem('prot_products'); if(!v) return false; const a=JSON.parse(v); return Array.isArray(a) && a.length>0; }catch(e){return false;} })();
+    if(isSampleOnly && !hasRealStorage){
+      products = [];
+      console.log('[init] Supabase مهيأ — تم تجاهل العينات، انتظار السحابة');
+    }
+  }
+}catch(e){}
 let cart=[];
 let selected=null;
 function _saveLocal(){
@@ -113,6 +125,7 @@ function _recordDeleted(barcode){
     _saveDeletedMap(m);
   }catch(e){}
 }
+window.forceCloudSync = async ()=>{ try{ const d=await SupabaseSync.getProducts(); _applyProducts(d,'Supabase'); _setBadge(products.length); alert('✓ تمت المزامنة من السحابة: '+products.length); }catch(e){ alert('فشل: '+e.message);} };
 function _isDeleted(barcode, remoteTime){
   if(!barcode) return false;
   try{
@@ -162,7 +175,6 @@ function _setBadge(count){
 
 function _applyProducts(newData, source){
   if(!Array.isArray(newData)) return false;
-  // تطبيع
   const normalized = newData.map(p=>({
     id: p.id,
     name: p.name||'',
@@ -175,9 +187,43 @@ function _applyProducts(newData, source){
     barcode_path: p.barcode_path||'',
     created_at: p.created_at||'',
     updated_at: p.updated_at||''
-  }));
-  // دمج ذكي بدل استبدال كامل — يحل مشكلة الرجوع
-  // 1) ابنِ خريطة المحلي بالباركود
+  })).filter(p=> p.barcode);
+
+  const isCloud = String(source).includes("Supabase"); // السحابة هي المصدر الوحيد
+  // --- وضع السحابة فقط ---
+  if(isCloud){
+    // لو السحابة مهيأة، استبدال كامل بدون دمج — السحابة هي الحقيقة
+    const oldHash = _hashList(products);
+    const newHash = _hashList(normalized);
+    const sameLength = products.length===normalized.length;
+    const sameBarcodes = sameLength && products.every((pr,i)=>{
+      // مقارنة سريعة بالباركود والسعر
+      const np = normalized.find(x=> x.barcode===pr.barcode);
+      return np && String(np.price)===String(pr.price) && String(np.stock)===String(pr.stock) && np.name===pr.name;
+    });
+    // لو نفس البيانات تماماً لا حاجة لإعادة الرسم
+    if(sameBarcodes && oldHash===newHash){
+      return false;
+    }
+    // استبدال كامل حتى لو فارغ — هذا يحذف المحذوفات فوراً
+    const prevCount = products.length;
+    products = normalized.slice().sort((a,b)=> (b.id||0)-(a.id||0));
+    // مسح الهاشات لإجبار إعادة الرسم
+    _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
+    _saveLocal();
+    // تنظيف tombstone للباركودات التي عادت من السحابة (إعادة إنشاء)
+    try{
+      for(const rp of normalized){
+        try{ if(rp.barcode) _clearDeleted(rp.barcode); }catch(e){}
+      }
+    }catch(e){}
+    renderUserTable(); renderPricingTable();
+    const tb=document.getElementById('tableBody'); if(tb) renderTable();
+    console.log(`✓ سحابة ${source}: ${prevCount} -> ${products.length} (استبدال كامل)`);
+    return true;
+  }
+
+  // --- وضع احتياطي (GitHub/محلي) — دمج تقليدي ---
   const byBarcode = {};
   const byId = {};
   products.forEach(p=>{ if(p.barcode) byBarcode[p.barcode]=p; byId[p.id]=p; });
@@ -185,32 +231,21 @@ function _applyProducts(newData, source){
   let added = 0, updated = 0;
   for(const rp of normalized){
     if(!rp.barcode) continue;
-    // منع رجوع المنتج المحذوف
     try{
       const rTime = rp.updated_at || rp.created_at || "";
-      if(_isDeleted(rp.barcode, rTime)){
-        continue;
-      }
+      if(_isDeleted(rp.barcode, rTime)) continue;
     }catch(e){}
     const local = byBarcode[rp.barcode] || byId[rp.id];
     if(!local){
-      // منتج جديد من السحابة — لكن تأكد أنه ليس محذوف
       products.push(rp);
       changed = true; added++;
     } else {
-      // قارن updated_at — احتفظ بالأحدث
       const rTime = rp.updated_at || rp.created_at || "";
       const lTime = local.updated_at || local.created_at || "";
-      // لو السحابي أحدث أو نفس الوقت لكن القيم مختلفة، حدث
       const needUpdate = (rTime > lTime) || (rTime===lTime && (parseFloat(rp.price)!==parseFloat(local.price) || parseInt(rp.stock)!==parseInt(local.stock) || rp.name!==local.name));
-      // لو المحلي أحدث، لا ترجع لقديم
       const localNewer = lTime > rTime;
-      if(localNewer){
-        // تجاهل السحابي القديم — حافظ على المحلي
-        continue;
-      }
+      if(localNewer) continue;
       if(needUpdate){
-        // حدث الحقول
         let diff = false;
         for(const k of ['name','barcode','category','price','stock','description','image_path','barcode_path','updated_at','created_at']){
           if(String(rp[k]||'') !== String(local[k]||'')){
@@ -222,23 +257,11 @@ function _applyProducts(newData, source){
       }
     }
   }
-  // معالجة الحذف: منتج محلي غير موجود في السحابة → احذفه (مع حماية من المسح الكلي)
   let deleted = 0;
-  // حماية: لو السحابة فارغة (0) لا تحذف المحلي تلقائياً — قد يكون خطأ RLS أو انقطاع
-  if(normalized.length===0 && products.length>0){
-    console.warn(`[sync] السحابة فارغة من ${source} لكن المحلي ${products.length} — لن يتم المسح التلقائي`);
-    // لا تحذف — فقط احتفظ بالمحلي
-  } else if(normalized.length>0){
-    // حماية من الحذف الجماعي لو السحابة ناقصة
-    if(normalized.length < Math.max(1, products.length * 0.5) && products.length > 5){
-      if(products.length - normalized.length > 5){
-        console.warn(`[sync] تجاهل حذف جماعي: محلي ${products.length} vs سحابي ${normalized.length}`);
-      }
-    }
+  if(normalized.length>0){
     const remoteBarcodes = new Set(normalized.map(p=> String(p.barcode||'').trim()).filter(Boolean));
     const toDelete = [];
-    const isAuthoritative = String(source).includes("GitHub") || String(source).includes("Supabase");
-    // حل جذري: لو المصدر GitHub أو Supabase (القاعدة المشتركة) اعتبره مصدر الحقيقة — احذف أي محلي غير موجود فوراً (مع حماية 5 ثوان للمنتج الجديد جداً)
+    const isAuthoritative = String(source).includes("GitHub");
     if(isAuthoritative){
       for(const lp of [...products]){
         const bc = String(lp.barcode||'').trim();
@@ -254,7 +277,6 @@ function _applyProducts(newData, source){
         toDelete.push(lp);
       }
     } else {
-      // لو الفرق كبير تجاهل الحذف الجماعي
       const diff = products.length - normalized.length;
       const shouldBulkDelete = !(normalized.length < products.length * 0.5 && diff > 5);
       if(shouldBulkDelete){
@@ -284,15 +306,14 @@ function _applyProducts(newData, source){
   }
   if(changed){
     products.sort((a,b)=> (b.id||0)-(a.id||0));
+    _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
     _saveLocal();
     renderUserTable(); renderPricingTable();
     const tb=document.getElementById('tableBody'); if(tb) renderTable();
     console.log(`✓ دمج ${normalized.length} من ${source} (+${added} جديد، ~${updated} تحديث، -${deleted} حذف)`);
     return true;
   }
-  // لو لا تغيير بالدمج، تحقق لو العدد أو الترتيب اختلف فقط
   if(JSON.stringify(normalized)!==JSON.stringify(products)){
-    // لا نستبدل كاملاً إذا الدمج لم يغير — نحافظ على المحلي
     console.log(`[sync] تجاهل استبدال كامل من ${source} — المحلي أحدث`);
     return false;
   }
@@ -380,45 +401,58 @@ async function syncFromApi(){
     await syncFromLocalFile();
     return;
   }
-  // 1) Supabase أولاً (سحابي لحظي)
+  // 1) السحابة فقط — إذا كانت مهيأة فهي المصدر الوحيد
   if(window.SupabaseSync && SupabaseSync.isConfigured()){
     try{
       const data = await SupabaseSync.getProducts();
       if(Array.isArray(data)){
+        // استبدال كامل حتى لو فارغ — هذا يحذف المحذوفات فوراً
         _applyProducts(data, 'Supabase');
         _setBadge(products.length);
-        // لو السحابة بها بيانات، لا حاجة للبقية
-        if(data.length>0) return;
-        // لو السحابة فارغة، لا ترجع مبكراً — جرب Local API و GitHub للتأكد (حماية من مسح كاذب)
-        if(data.length===0) console.warn('[sync] Supabase فارغة — سيتم فحص Local API و GitHub للتأكد');
-      }
-    }catch(e){ console.log('Supabase fail', e.message); }
-  }
-  // 2) Local API (شبكة محلية)
-  const bases = [];
-  const localBase = getApiBase();
-  if(localBase) bases.push(localBase);
-  const cfFromStorage = (()=>{ try{ return localStorage.getItem('public_cf_url')||''; }catch(e){return '';} })();
-  if(cfFromStorage && !bases.includes(cfFromStorage)) bases.push(cfFromStorage);
-  for(const base of bases){
-    try{
-      const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 2500);
-      const r = await fetch(`${base}/api/products?_t=`+Date.now(), {cache:'no-store', signal: ctrl.signal, mode:'cors', credentials:'omit'});
-      clearTimeout(t);
-      if(!r.ok) throw new Error(r.status);
-      const data = await r.json();
-      if(Array.isArray(data)){
-        _applyProducts(data, base);
-        _setBadge(products.length);
-        console.log(`✓ تمت المزامنة: ${data.length} منتج من ${base} -> محلي ${products.length}`);
+        console.log(`✓ Supabase مزامن: ${data.length} منتج (سحابة فقط)`);
         return;
       }
-    }catch(e){ console.log('API', base, 'غير متاح', e.message); }
+    }catch(e){
+      console.log('Supabase fail — محاولة fallback', e.message);
+      // فقط عند فشل السحابة نستخدم fallback
+    }
   }
-  // 3) GitHub (يعمل عبر الإنترنت حتى لو اللابتوب مطفي)
-  if(await syncFromGitHub()) return;
-  // 4) fallback محلي
-  if(await syncFromLocalFile()) return;
+  // 2) fallback فقط لو السحابة غير مهيأة أو فشلت
+  if(!window.SupabaseSync || !SupabaseSync.isConfigured()){
+    // Local API
+    const bases = [];
+    const localBase = getApiBase();
+    if(localBase) bases.push(localBase);
+    const cfFromStorage = (()=>{ try{ return localStorage.getItem('public_cf_url')||''; }catch(e){return '';} })();
+    if(cfFromStorage && !bases.includes(cfFromStorage)) bases.push(cfFromStorage);
+    for(const base of bases){
+      try{
+        const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 2500);
+        const r = await fetch(`${base}/api/products?_t=`+Date.now(), {cache:'no-store', signal: ctrl.signal, mode:'cors', credentials:'omit'});
+        clearTimeout(t);
+        if(!r.ok) throw new Error(r.status);
+        const data = await r.json();
+        if(Array.isArray(data)){
+          _applyProducts(data, base);
+          _setBadge(products.length);
+          console.log(`✓ تمت المزامنة (fallback): ${data.length} منتج من ${base} -> محلي ${products.length}`);
+          return;
+        }
+      }catch(e){ console.log('API', base, 'غير متاح', e.message); }
+    }
+    // GitHub fallback
+    if(await syncFromGitHub()) return;
+    // محلي
+    if(await syncFromLocalFile()) return;
+  } else {
+    // السحابة مهيأة لكن فشلت — لا تعرض بيانات قديمة على أنها سحابة، أظهر غير متصل
+    _syncFailCount++;
+    if(_syncFailCount >= 2){
+      const badge=document.getElementById('syncStatus');
+      if(badge){ badge.textContent='غير متصل - السحابة'; badge.style.color='#c8943a'; }
+    }
+    return;
+  }
   _syncFailCount++;
   if(_syncFailCount < 2) return; // لا ترمش — انتظر فشلين متتاليين
   const badge=document.getElementById('syncStatus');
@@ -484,7 +518,7 @@ function initSupabaseRealtime(){
     const ok = SupabaseSync.subscribeRealtime((newData)=>{
       console.log('[Supabase RT] onChange', newData.length);
       _applyProducts(newData, 'Supabase RT');
-      _setBadge(newData.length);
+      _setBadge(products.length);
     });
     if(ok){
       _supaRealtimeActive = true;
