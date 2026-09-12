@@ -233,25 +233,33 @@ function _applyProducts(newData, source){
     }
     const remoteBarcodes = new Set(normalized.map(p=> String(p.barcode||'').trim()).filter(Boolean));
     const toDelete = [];
-    // لو الفرق كبير تجاهل الحذف الجماعي
-    const diff = products.length - normalized.length;
-    const shouldBulkDelete = !(normalized.length < products.length * 0.5 && diff > 5);
-    if(shouldBulkDelete){
+    const isGitHub = String(source).includes("GitHub");
+    // حل جذري: لو المصدر GitHub اعتبره مصدر الحقيقة — احذف أي محلي غير موجود فوراً
+    if(isGitHub){
       for(const lp of [...products]){
         const bc = String(lp.barcode||'').trim();
         if(!bc || remoteBarcodes.has(bc)) continue;
-        // لو هذا الباركود محذوف محلياً أصلاً لا نحذفه مرة أخرى
         try{ if(_isDeleted(bc)) continue; }catch(e){}
-        const lTime = lp.updated_at||lp.created_at||'';
-        // لو المحلي حديث جداً (أقل من 30 ثانية) لا تحذفه — قد يكون لم يُرفع بعد
-        let isNew = false;
-        try{
-          const age = Date.now() - new Date(lTime.replace(' ','T')).getTime();
-          if(!isNaN(age) && age < 30000) isNew = true;
-        }catch{}
-        if(isNew) continue;
-        // أي منتج محلي قديم غير موجود في السحابة → اعتبره محذوف من السحابة
         toDelete.push(lp);
+      }
+    } else {
+      // لو الفرق كبير تجاهل الحذف الجماعي
+      const diff = products.length - normalized.length;
+      const shouldBulkDelete = !(normalized.length < products.length * 0.5 && diff > 5);
+      if(shouldBulkDelete){
+        for(const lp of [...products]){
+          const bc = String(lp.barcode||'').trim();
+          if(!bc || remoteBarcodes.has(bc)) continue;
+          try{ if(_isDeleted(bc)) continue; }catch(e){}
+          const lTime = lp.updated_at||lp.created_at||'';
+          let isNew = false;
+          try{
+            const age = Date.now() - new Date(lTime.replace(' ','T')).getTime();
+            if(!isNaN(age) && age < 30000) isNew = true;
+          }catch{}
+          if(isNew) continue;
+          toDelete.push(lp);
+        }
       }
     }
     if(toDelete.length>0){
