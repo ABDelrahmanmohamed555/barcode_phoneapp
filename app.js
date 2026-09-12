@@ -233,13 +233,20 @@ function _applyProducts(newData, source){
     }
     const remoteBarcodes = new Set(normalized.map(p=> String(p.barcode||'').trim()).filter(Boolean));
     const toDelete = [];
-    const isGitHub = String(source).includes("GitHub");
-    // حل جذري: لو المصدر GitHub اعتبره مصدر الحقيقة — احذف أي محلي غير موجود فوراً
-    if(isGitHub){
+    const isAuthoritative = String(source).includes("GitHub") || String(source).includes("Supabase");
+    // حل جذري: لو المصدر GitHub أو Supabase (القاعدة المشتركة) اعتبره مصدر الحقيقة — احذف أي محلي غير موجود فوراً (مع حماية 5 ثوان للمنتج الجديد جداً)
+    if(isAuthoritative){
       for(const lp of [...products]){
         const bc = String(lp.barcode||'').trim();
         if(!bc || remoteBarcodes.has(bc)) continue;
         try{ if(_isDeleted(bc)) continue; }catch(e){}
+        const lTime = lp.updated_at||lp.created_at||'';
+        let isNew = false;
+        try{
+          const age = Date.now() - new Date(lTime.replace(' ','T')).getTime();
+          if(!isNaN(age) && age < 5000) isNew = true;
+        }catch{}
+        if(isNew) continue;
         toDelete.push(lp);
       }
     } else {

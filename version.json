@@ -1,23 +1,24 @@
 {
-  "version": "2.9.1",
-  "build": 27,
-  "date": "2026-09-12T14:37:27",
-  "notes": "توحيد Supabase - قاعدة مشتركة",
+  "version": "2.9.2",
+  "build": 28,
+  "date": "2026-09-12T14:48:46",
+  "notes": "حل جذري نهائي للحذف - Supabase/Github مصدر حقيقة مع حذف فوري",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "0befbc593cc2047bcee69eae7f82b030e316921e28ea5027912e03074e0daad0",
+    "app.js": "fa1cdcf0647abf130c61a2d42664aba7e89c1d5d14371394b188ada9167387af",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
     "index.html": "c3de69b15cb580982ecf8be287c20f18cd006339860cffbeb0c14a4dcd8db049",
     "manifest.json": "f8d7763eb253611f38a9fe7f4fbb2da93da9f651d8c1daa1554ada9325dcb927",
-    "products.json": "b27ea52d925c59117fa78eb04df1f9ffc21181dc96604fd565c1de6d15a92acc",
+    "products.json": "29900fbe182b895df19fa654fb31d5333f3f85d01c0fa1a363dda29e124568e7",
     "style.css": "4351f20b2d0bf7c68ad02e5315373a1c08b5785f0c76f9895187bc60334c77c8",
     "supabase_sync.js": "d0ada953f8bdff5c475d6eb40a74d01e0461ead629305085e779b28f9d5a14dd",
     "sw.js": "28b82fbb525968eab2ef8ab599d4aa0866b12b535bf3631651f2bf2fef8607bf",
     "updater.js": "038e87a5f2b032f63fbd3e226cec7b25d9055f17946e7089f07f28e06a9f349c",
-    "version.json": "c70df347b50ccc585aa96b52fdd0af01156f55b3d6243968a085f250af518ab7"
+    "version.json": "5caf3f772a1e55321762c3adadf4dda9b643180cd76f0ef1c9d90ffa11085d97"
   },
   "changelog": [
+    "2.9.2 - حل جذري نهائي للحذف - Supabase/Github مصدر حقيقة مع حذف فوري (2026-09-12)",
     "2.9.1 - توحيد Supabase - قاعدة مشتركة (2026-09-12)",
     "2.9 - توحيد قاعدة البيانات - Supabase مشترك للاتنين مع صلاحية كاملة (2026-09-12)",
     "2.8 - حل جذري نهائي لمزامنة الحذف - GitHub مصدر الحقيقة + دفع فوري (2026-09-12)",
@@ -36,7 +37,6 @@
     "1.7 - الرقم بعد update هو الإصدار (2026-09-09)",
     "1.0.7 - حل جذري نهائي - مزامنة لحظية عبر GitHub بدون سيرفر (2026-09-09)",
     "1.0.7 - حل جذري نهائي - مزامنة لحظية عبر GitHub بدون سيرفر (2026-09-09)",
-    "1.0.6 - حل جذري مزامنة منتجات GitHub - لحظي عبر الإنترنت (2026-09-08)",
-    "1.0.6 - إصلاح مزامنة المنتجات عبر الإنترنت - مهلة قصيرة (2026-09-08)"
+    "1.0.6 - حل جذري مزامنة منتجات GitHub - لحظي عبر الإنترنت (2026-09-08)"
   ]
 }
