@@ -70,9 +70,11 @@ try{
   const ls = localStorage.getItem('prot_products');
   if(ls){
     const parsed = JSON.parse(ls);
-    if(Array.isArray(parsed) && parsed.length>0) products = parsed;
+    if(Array.isArray(parsed)) products = parsed;
+    if(Array.isArray(parsed) && parsed.length===0) products = [];
   }
 }catch(e){}
+if(!Array.isArray(products)) products=[...sample];
 let cart=[];
 let selected=null;
 function _saveLocal(){
@@ -320,7 +322,7 @@ async function syncFromGitHub(){
       const data = JSON.parse(content);
       if(Array.isArray(data)){
         _applyProducts(data, `GitHub API ${token?'✓':'anon'} sha:${_githubSha?.slice(0,7)}`);
-        _setBadge(data.length);
+        _setBadge(products.length);
         return true;
       }
     } else if(r.status===404){
@@ -337,7 +339,7 @@ async function syncFromGitHub(){
       const data = await r.json();
       if(Array.isArray(data)){
         _applyProducts(data, `GitHub Raw`);
-        _setBadge(data.length);
+        _setBadge(products.length);
         return true;
       }
     }catch(e){ console.log('GitHub Raw fail', e.message); }
@@ -374,7 +376,7 @@ async function syncFromLocalFile(){
     const data = await r.json();
     if(Array.isArray(data)){
       _applyProducts(data, 'محلي');
-      _setBadge(data.length);
+      _setBadge(products.length);
       return true;
     }
   }catch(e){}
@@ -385,24 +387,22 @@ async function syncFromApi(){
     await syncFromLocalFile();
     return;
   }
-  // 0) Supabase أولاً (لحظي) — لكن لو فاضي والمحلي فيه بيانات، لا تعتبره موثوق
+  // 0) Supabase أولاً (لحظي) — حل جذري: حتى لو فاضي احذف المحلي
   if(window.SupabaseSync && SupabaseSync.isConfigured()){
     try{
       const data = await SupabaseSync.getProducts();
       if(Array.isArray(data)){
-        if(data.length===0 && products.length>0){
-          console.log('Supabase empty but local has '+products.length+' — fallback to GitHub');
-          // لا تعمل return، جرب GitHub و Local API
-        } else {
-          if(data.length>0) _applyProducts(data, 'Supabase');
-          _setBadge(data.length);
-          if(_supaRealtimeActive && data.length>0) return;
-          if(data.length>0) return;
-          if(data.length===0 && products.length===0){
-            if(_supaRealtimeActive) return;
-            return;
-          }
+        _applyProducts(data, 'Supabase');
+        _setBadge(products.length);
+        // لا ترجع مبكراً عند 0 — اترك GitHub يؤكد، لكن Supabase هو مصدر الحقيقة
+        if(data.length>0 && _supaRealtimeActive) return;
+        if(data.length===0 && products.length===0) return;
+        if(data.length>0) {
+          // لو Supabase فيه بيانات، لا حاجة لـ GitHub الآن
+          return;
         }
+        // لو Supabase فاضي والمحلي كان فيه بيانات وتم حذفه، لا تذهب لـ GitHub (تم الحذف بالفعل)
+        if(data.length===0 && products.length===0) return;
       }
     }catch(e){ console.log('Supabase fail', e.message); }
   }
@@ -413,7 +413,7 @@ async function syncFromApi(){
   // رابط Cloudflare اختياري من الإعدادات (لا تستخدم الرابط المنتهي افتراضياً)
   const cfFromStorage = (()=>{ try{ return localStorage.getItem('public_cf_url')||''; }catch(e){return '';} })();
   if(cfFromStorage && !bases.includes(cfFromStorage)) bases.push(cfFromStorage);
-  // جرب Local API — لو فاضي والمحلي فيه بيانات، جرب GitHub
+  // جرب Local API — حل جذري: حتى لو فاضي احذف
   for(const base of bases){
     try{
       const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 2500);
@@ -422,13 +422,9 @@ async function syncFromApi(){
       if(!r.ok) throw new Error(r.status);
       const data = await r.json();
       if(Array.isArray(data)){
-        if(data.length===0 && products.length>0){
-          console.log('Local API empty but local has '+products.length+' — try GitHub');
-          continue;
-        }
-        if(data.length>0) _applyProducts(data, base);
-        _setBadge(data.length);
-        console.log(`✓ تمت المزامنة: ${data.length} منتج من ${base}`);
+        _applyProducts(data, base);
+        _setBadge(products.length);
+        console.log(`✓ تمت المزامنة: ${data.length} منتج من ${base} -> محلي ${products.length}`);
         return;
       }
     }catch(e){ console.log('API', base, 'غير متاح', e.message); }

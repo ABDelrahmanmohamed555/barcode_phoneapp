@@ -36,6 +36,19 @@ self.addEventListener('fetch', e=>{
     e.respondWith(fetch(e.request, {cache:'no-store'}).catch(()=> caches.match(e.request)));
     return;
   }
+  // حل جذري للوميض والـ cache القديم: app.js و supabase_sync.js و products.json دائماً من الشبكة أولاً
+  if(url.pathname.match(/(app\.js|supabase_sync\.js|products\.json)$/)){
+    e.respondWith(
+      fetch(e.request, {cache:'no-store'}).then(resp=>{
+        if(resp.ok){
+          const clone = resp.clone();
+          caches.open(CURRENT_CACHE).then(c=> c.put(e.request, clone));
+        }
+        return resp;
+      }).catch(()=> caches.match(e.request))
+    );
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then(cached=>{
       const fetched = fetch(e.request).then(resp=>{

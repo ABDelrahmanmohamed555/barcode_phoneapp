@@ -1,23 +1,24 @@
 {
-  "version": "2.9.3",
-  "build": 29,
-  "date": "2026-09-12T15:01:02",
-  "notes": "حل جذري للقائمة الفارغة - حذف كل المحلي عند السحابة فارغة بدون وميض",
+  "version": "3.0",
+  "build": 30,
+  "date": "2026-09-12T15:47:39",
+  "notes": "حل جذري نهائي - إصلاح القائمة الفارغة والوميض والـ cache",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "c9cdd3e4ebc48da5d7c0509f0636321d179812933d1e1116ecf232d1259d7000",
+    "app.js": "4d98e207039e0a89b283f0a88f4dcdbb65a774e82e9743c9f78870487ad4fbf5",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
     "index.html": "c3de69b15cb580982ecf8be287c20f18cd006339860cffbeb0c14a4dcd8db049",
     "manifest.json": "f8d7763eb253611f38a9fe7f4fbb2da93da9f651d8c1daa1554ada9325dcb927",
     "products.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
     "style.css": "4351f20b2d0bf7c68ad02e5315373a1c08b5785f0c76f9895187bc60334c77c8",
     "supabase_sync.js": "d0ada953f8bdff5c475d6eb40a74d01e0461ead629305085e779b28f9d5a14dd",
-    "sw.js": "28b82fbb525968eab2ef8ab599d4aa0866b12b535bf3631651f2bf2fef8607bf",
+    "sw.js": "602d90b4f033db23b8a23b8ee3fd937d1be09974c192b54c57c3fdc33b985cbb",
     "updater.js": "038e87a5f2b032f63fbd3e226cec7b25d9055f17946e7089f07f28e06a9f349c",
-    "version.json": "6d99bfdc6b26c20d9618daa682474ad79e36859a6cb61a8d1514c8eab2d6550a"
+    "version.json": "5bd3bbf6b00d7aa0d3c959587c6cef785756745487837ebbd703361fa5f1c6d5"
   },
   "changelog": [
+    "3.0 - حل جذري نهائي - إصلاح القائمة الفارغة والوميض والـ cache (2026-09-12)",
     "2.9.3 - حل جذري للقائمة الفارغة - حذف كل المحلي عند السحابة فارغة بدون وميض (2026-09-12)",
     "2.9.2 - حل جذري نهائي للحذف - Supabase/Github مصدر حقيقة مع حذف فوري (2026-09-12)",
     "2.9.1 - توحيد Supabase - قاعدة مشتركة (2026-09-12)",
@@ -36,7 +37,6 @@
     "1.8 - حل جذري مزامنة Supabase لحظية (2026-09-09)",
     "1.8 - حل جذري مزامنة Supabase لحظية (2026-09-09)",
     "1.7 - الرقم بعد update هو الإصدار (2026-09-09)",
-    "1.0.7 - حل جذري نهائي - مزامنة لحظية عبر GitHub بدون سيرفر (2026-09-09)",
     "1.0.7 - حل جذري نهائي - مزامنة لحظية عبر GitHub بدون سيرفر (2026-09-09)"
   ]
 }
