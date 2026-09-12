@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><title>مسح ذاكرة التطبيق</title></head><body style="font-family:sans-serif;direction:rtl;text-align:center;padding:40px;background:#0d1117;color:#f5f0e3">
+<h2>مسح ذاكرة التطبيق</h2>
+<p>اضغط الزر لمسح المنتجات المخزنة محلياً (LocalStorage + Cache)</p>
+<button onclick="clearAll()" style="padding:12px 24px;background:#c73e3e;color:#fff;border:none;border-radius:8px;font-size:16px">مسح الكل</button>
+<p id="status" style="margin-top:20px;color:#9e9e9e"></p>
+<script>
+function clearAll(){
+  try{
+    localStorage.removeItem('prot_products');
+    localStorage.removeItem('deleted_barcodes');
+    localStorage.removeItem('ota_app.js');
+    localStorage.removeItem('ota_supabase_sync.js');
+    localStorage.removeItem('ota_version');
+    // clear all ota_ keys
+    for(let i=localStorage.length-1;i>=0;i--){
+      const k=localStorage.key(i);
+      if(k && k.startsWith('ota_')) localStorage.removeItem(k);
+    }
+    // clear Cache API
+    if('caches' in window){
+      caches.keys().then(keys=> Promise.all(keys.map(k=> caches.delete(k)))).then(()=> {
+        document.getElementById('status').textContent='✓ تم مسح LocalStorage والكاش - أعد فتح التطبيق';
+      });
+    } else {
+      document.getElementById('status').textContent='✓ تم مسح LocalStorage';
+    }
+    // also clear products display
+    if(window.products) window.products=[];
+  }catch(e){
+    document.getElementById('status').textContent='فشل: '+e.message;
+  }
+}
+clearAll();
+setTimeout(clearAll, 500);
+</script>
+</body></html>

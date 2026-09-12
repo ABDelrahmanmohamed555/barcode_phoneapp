@@ -44,11 +44,29 @@ window.forceCloudSync = async ()=>{
 };
 window.clearLocalCache = ()=>{
   if(confirm('مسح الكاش المحلي وإعادة التحميل من السحابة؟')){
-    _clearCache();
-    localStorage.removeItem('deleted_barcodes');
-    location.reload();
+    try{
+      _clearCache();
+      localStorage.removeItem('deleted_barcodes');
+      // مسح كل كاش OTA
+      for(let i=localStorage.length-1;i>=0;i--){
+        const k=localStorage.key(i);
+        if(k && k.startsWith('ota_')) localStorage.removeItem(k);
+      }
+      localStorage.removeItem('ota_version');
+    }catch(e){}
+    // مسح Cache API (Service Worker)
+    if('caches' in window){
+      caches.keys().then(keys=> Promise.all(keys.map(k=> caches.delete(k)))).then(()=>{
+        location.reload();
+      });
+      setTimeout(()=> location.reload(), 800);
+    } else {
+      location.reload();
+    }
   }
 };
+window.clearAllAppMemory = window.clearLocalCache; // alias للطلب "مسح ذاكرة التطبيق"
+
 
 let _supaRealtimeActive = false;
 let _lastBadgeCount = -1;

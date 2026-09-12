@@ -1,12 +1,13 @@
 {
   "version": "new",
-  "build": 35,
-  "date": "2026-09-12T17:15:40",
-  "notes": "إصلاح OTA - مقارنة new كأحدث إصدار",
+  "build": 36,
+  "date": "2026-09-12T17:22:19",
+  "notes": "مسح ذاكرة التطبيق - تحسين clearCache",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "47368f3b9d11a483df525bf9da03494b194ff55516e09aa2e3cfa6a1b5a5ebfc",
+    "app.js": "6b3cf316835b14183e5b1f368985b03be0b1e17ad3be948f015e174fcd78f7a7",
+    "clear_cache.html": "884f83938f17a93a168b33c640032b8b275db4435723d904d770e39f38434650",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
     "index.html": "b481565ce163d8cade146601479de3d0fa3f5701fd683c86b833f25ae186b91b",
     "manifest.json": "f8d7763eb253611f38a9fe7f4fbb2da93da9f651d8c1daa1554ada9325dcb927",
@@ -15,9 +16,10 @@
     "supabase_sync.js": "ef3ca1d1cf066adab0839987974086dce9751cedca3e988949139db48f70e689",
     "sw.js": "3176681e2018058abc3ee4fd98faad8ec8a9d01435ef2cd1f391f3511bc6b90f",
     "updater.js": "279e82a200f48ab838584d882a1e54a314acd9a2d2feac20516cdcb4cb6b2c2c",
-    "version.json": "bdaa5426f68e06b47273008df070bb7c23b63e4caf96b3c3daa991a3fc7c4f6e"
+    "version.json": "e5a1ab97687e67a2c076ed5a99e0aae7da976a78bab93ee26be319db011e5459"
   },
   "changelog": [
+    "new - مسح ذاكرة التطبيق - تحسين clearCache (2026-09-12)",
     "new - إصلاح OTA - مقارنة new كأحدث إصدار (2026-09-12)",
     "new - بناء نظيف new - السحابة فقط بدون GitHub/Local - إصلاح init cache (2026-09-12)",
     "new - بناء نظيف new - السحابة فقط بدون GitHub/Local (2026-09-12)",
@@ -36,7 +38,6 @@
     "2.3 - إصلاح تحميل OTA لـ app.js - منع وميض مزامن (2026-09-09)",
     "2.2 - تثبيت شريط المزامنة ومنع وميض القائمة - تحديث في الخلفية (2026-09-09)",
     "1.11 - تثبيت شريط المزامنة ومنع وميض القائمة - تحديث في الخلفية (2026-09-09)",
-    "1.10 - تحديث هوائي شامل - أي ملف جديد ينزل تلقائياً بدون تثبيت (2026-09-09)",
-    "1.10 - اختبار ملف جديد تلقائي (2026-09-09)"
+    "1.10 - تحديث هوائي شامل - أي ملف جديد ينزل تلقائياً بدون تثبيت (2026-09-09)"
   ]
 }
