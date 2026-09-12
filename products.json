@@ -1,5 +1,18 @@
 [
   {
+    "id": 1000000,
+    "name": "test",
+    "barcode": "8802786879465",
+    "category": "عام",
+    "price": 0.0,
+    "stock": 8,
+    "description": "",
+    "image_path": "",
+    "barcode_path": "/home/kali/Desktop/prot/assets/barcodes/8802786879465.png",
+    "created_at": "2026-09-12 14:45:44",
+    "updated_at": "2026-09-12 14:45:44"
+  },
+  {
     "id": 39,
     "name": "كاوتشة غسالة فريش",
     "barcode": "8803901533378",
