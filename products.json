@@ -1,15 +1,1 @@
-[
-  {
-    "id": 999991,
-    "name": "منتج من التليفون",
-    "barcode": "8800000000011",
-    "category": "عام",
-    "price": 200.0,
-    "stock": 5,
-    "description": "",
-    "image_path": "",
-    "barcode_path": "",
-    "created_at": "2026-09-12 15:00:00",
-    "updated_at": "2026-09-12 15:00:00"
-  }
-]
+[]
