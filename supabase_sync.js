@@ -7,17 +7,23 @@
   const KEY_KEY = 'supabase_key';
   const TABLE = 'products';
 
-  // القاعدة الموحدة الجديدة — كل التطبيقين يشاركان نفس Supabase
+  // القاعدة الموحدة — كل التطبيقين يشاركان نفس Supabase (service_role للوصول الكامل)
+  // ملاحظة: المفتاح الحالي هو service_role (آمن للاستخدام الداخلي فقط)
   const DEFAULT_URL = 'https://vseycanfadblfmkevoqe.supabase.co';
   const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzZXljYW5mYWRibGZta2V2b3FlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODk0Mzk4NywiZXhwIjoyMTA0NTE5OTg3fQ.XX6gBLx6t5exMwk0xqnOY8nMSZ00oHq9qdj2jdo223g';
   function getConfig(){
     try{
       const url = localStorage.getItem(KEY_URL);
       const key = localStorage.getItem(KEY_KEY);
-      if(url && key){
-        // لو كان المخزن قديم لمشروع zvbd الفارغ، تجاهله واستخدم الجديد
-        if(url.includes('zvbdfkdhradhkqdywcal')) return {url: DEFAULT_URL, key: DEFAULT_KEY};
-        return {url: url.replace(/\/+$/,''), key: key.trim()};
+      if(url && key && url.trim() && key.trim()){
+        // تجاهل القيم الفارغة أو القديمة
+        const u = url.trim().replace(/\/+$/,'');
+        const k = key.trim();
+        if(u && k){
+          // لو كان المخزن لمشروع قديم غير موجود، استخدم الافتراضي
+          if(u.includes('zvbdfkdhradhkqdywcal')) return {url: DEFAULT_URL, key: DEFAULT_KEY};
+          return {url: u, key: k};
+        }
       }
     }catch(e){}
     return {url: DEFAULT_URL, key: DEFAULT_KEY};

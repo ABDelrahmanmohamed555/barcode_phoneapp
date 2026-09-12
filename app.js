@@ -222,24 +222,17 @@ function _applyProducts(newData, source){
       }
     }
   }
-  // معالجة الحذف: منتج محلي غير موجود في السحابة → احذفه (لمنع الرجوع) — حل جذري يتعامل حتى مع القائمة الفارغة
+  // معالجة الحذف: منتج محلي غير موجود في السحابة → احذفه (مع حماية من المسح الكلي)
   let deleted = 0;
-  const isAuthoritativeForEmpty = String(source).includes("GitHub") || String(source).includes("Supabase") || String(source).includes("محلي");
-  if(normalized.length===0 && products.length>0 && isAuthoritativeForEmpty){
-    // السحابة فارغة تماماً (كل المنتجات محذوفة) — احذف كل المحلي فوراً
-    for(const lp of [...products]){
-      try{ _recordDeleted(lp.barcode); }catch(e){}
-    }
-    deleted = products.length;
-    products = [];
-    changed = true;
+  // حماية: لو السحابة فارغة (0) لا تحذف المحلي تلقائياً — قد يكون خطأ RLS أو انقطاع
+  if(normalized.length===0 && products.length>0){
+    console.warn(`[sync] السحابة فارغة من ${source} لكن المحلي ${products.length} — لن يتم المسح التلقائي`);
+    // لا تحذف — فقط احتفظ بالمحلي
   } else if(normalized.length>0){
     // حماية من الحذف الجماعي لو السحابة ناقصة
     if(normalized.length < Math.max(1, products.length * 0.5) && products.length > 5){
       if(products.length - normalized.length > 5){
-        // fetch جزئي - تجاهل
-      } else {
-        // فرق صغير مسموح
+        console.warn(`[sync] تجاهل حذف جماعي: محلي ${products.length} vs سحابي ${normalized.length}`);
       }
     }
     const remoteBarcodes = new Set(normalized.map(p=> String(p.barcode||'').trim()).filter(Boolean));
@@ -255,7 +248,7 @@ function _applyProducts(newData, source){
         let isNew = false;
         try{
           const age = Date.now() - new Date(lTime.replace(' ','T')).getTime();
-          if(!isNaN(age) && age < 5000) isNew = true;
+          if(!isNaN(age) && age < 30000) isNew = true;
         }catch{}
         if(isNew) continue;
         toDelete.push(lp);
@@ -387,33 +380,26 @@ async function syncFromApi(){
     await syncFromLocalFile();
     return;
   }
-  // 0) Supabase أولاً (لحظي) — حل جذري: حتى لو فاضي احذف المحلي
+  // 1) Supabase أولاً (سحابي لحظي)
   if(window.SupabaseSync && SupabaseSync.isConfigured()){
     try{
       const data = await SupabaseSync.getProducts();
       if(Array.isArray(data)){
         _applyProducts(data, 'Supabase');
         _setBadge(products.length);
-        // لا ترجع مبكراً عند 0 — اترك GitHub يؤكد، لكن Supabase هو مصدر الحقيقة
-        if(data.length>0 && _supaRealtimeActive) return;
-        if(data.length===0 && products.length===0) return;
-        if(data.length>0) {
-          // لو Supabase فيه بيانات، لا حاجة لـ GitHub الآن
-          return;
-        }
-        // لو Supabase فاضي والمحلي كان فيه بيانات وتم حذفه، لا تذهب لـ GitHub (تم الحذف بالفعل)
-        if(data.length===0 && products.length===0) return;
+        // لو السحابة بها بيانات، لا حاجة للبقية
+        if(data.length>0) return;
+        // لو السحابة فارغة، لا ترجع مبكراً — جرب Local API و GitHub للتأكد (حماية من مسح كاذب)
+        if(data.length===0) console.warn('[sync] Supabase فارغة — سيتم فحص Local API و GitHub للتأكد');
       }
     }catch(e){ console.log('Supabase fail', e.message); }
   }
-  // لو Supabase غير مهيأ، جرب Local API أولاً (أسرع على نفس الشبكة)
+  // 2) Local API (شبكة محلية)
   const bases = [];
   const localBase = getApiBase();
   if(localBase) bases.push(localBase);
-  // رابط Cloudflare اختياري من الإعدادات (لا تستخدم الرابط المنتهي افتراضياً)
   const cfFromStorage = (()=>{ try{ return localStorage.getItem('public_cf_url')||''; }catch(e){return '';} })();
   if(cfFromStorage && !bases.includes(cfFromStorage)) bases.push(cfFromStorage);
-  // جرب Local API — حل جذري: حتى لو فاضي احذف
   for(const base of bases){
     try{
       const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 2500);
@@ -429,9 +415,9 @@ async function syncFromApi(){
       }
     }catch(e){ console.log('API', base, 'غير متاح', e.message); }
   }
-  // 2) GitHub (يعمل عبر الإنترنت حتى لو اللابتوب مطفي)
+  // 3) GitHub (يعمل عبر الإنترنت حتى لو اللابتوب مطفي)
   if(await syncFromGitHub()) return;
-  // 3) fallback محلي
+  // 4) fallback محلي
   if(await syncFromLocalFile()) return;
   _syncFailCount++;
   if(_syncFailCount < 2) return; // لا ترمش — انتظر فشلين متتاليين

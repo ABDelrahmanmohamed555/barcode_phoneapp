@@ -127,13 +127,8 @@
     if(location.origin && location.origin !== 'null' && location.origin !== 'file://'){
       urls.push(location.origin + '/version.json');
     }
-    // --- عبر الإنترنت (Cloudflare Tunnel) — يعمل من أي مكان حتى لو مش نفس الواي فاي ---
-    const PUBLIC_CLOUDFLARE = 'https://reason-widely-continent-sorry.trycloudflare.com';
-    urls.push(PUBLIC_CLOUDFLARE + '/api/app_version');
-    urls.push(PUBLIC_CLOUDFLARE + '/version.json');
-    // --- عبر الإنترنت (Catbox - بدون سيرفر) — يعمل حتى لو اللابتوب مطفي ---
-    const PUBLIC_CATBOX = 'https://files.catbox.moe/87yk0c.json';
-    urls.push(PUBLIC_CATBOX);
+    // --- عبر الإنترنت (GitHub Raw) هو المصدر الوحيد عند انطفاء اللابتوب ---
+    // (تمت إزالة روابط Cloudflare/Catbox القديمة المنتهية لتجنب التضارب)
     // --- عبر الإنترنت (GitHub Raw) — يعمل حتى لو اللابتوب مطفي (بعد push) ---
     const PUBLIC_RAW = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main/version.json';
     urls.push(PUBLIC_RAW);
