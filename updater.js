@@ -137,9 +137,15 @@
   }
 
   function compareVersions(a,b){
-    // ترجع 1 لو a>b, -1 لو a<b, 0 لو متساوي — تدعم 1.0.0 و 1.0.1
-    const pa = String(a).split('.').map(x=>parseInt(x,10)||0);
-    const pb = String(b).split('.').map(x=>parseInt(x,10)||0);
+    // ترجع 1 لو a>b, -1 لو a<b, 0 لو متساوي — تدعم 1.0.0 و "new" (يعتبر الأحدث)
+    const sa = String(a).trim().toLowerCase();
+    const sb = String(b).trim().toLowerCase();
+    // "new" يعتبر أحدث من أي رقم
+    if(sa==="new" && sb!=="new") return 1;
+    if(sb==="new" && sa!=="new") return -1;
+    if(sa==="new" && sb==="new") return 0;
+    const pa = sa.split('.').map(x=>parseInt(x,10)||0);
+    const pb = sb.split('.').map(x=>parseInt(x,10)||0);
     const len = Math.max(pa.length, pb.length);
     for(let i=0;i<len;i++){
       const av = pa[i]||0, bv = pb[i]||0;
