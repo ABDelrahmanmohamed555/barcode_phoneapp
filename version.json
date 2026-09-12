@@ -1,8 +1,8 @@
 {
-  "version": "3.3",
-  "build": 40,
-  "date": "2026-09-12T18:27:32",
-  "notes": "مزامنة جديدة فقط - نظيف",
+  "version": "3.4",
+  "build": 41,
+  "date": "2026-09-12T18:43:19",
+  "notes": "إصلاح وصول التحديثات - OTA نظيف 3.4",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
@@ -16,9 +16,10 @@
     "supabase_sync.js": "2f110ca8b55655449e2d9986b1ebc067893c60b36e51436349431888c695d7f9",
     "sw.js": "ebcc91bff35bfe6211cf565ecd6059593ec76295d61df4ba56b016fd337c2cdf",
     "updater.js": "279e82a200f48ab838584d882a1e54a314acd9a2d2feac20516cdcb4cb6b2c2c",
-    "version.json": "97defb1036f845d590294a5e5326c3b9f577941df62204f5dfa35d8e08989050"
+    "version.json": "6592cb3c804bafa3b55581e0bbee6bad473f1950a3b70af533cd1da7a656408e"
   },
   "changelog": [
+    "3.4 - إصلاح وصول التحديثات - OTA نظيف 3.4 (2026-09-12)",
     "3.3 - مزامنة جديدة فقط - نظيف (2026-09-12)"
   ]
 }
