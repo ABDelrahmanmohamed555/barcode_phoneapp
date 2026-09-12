@@ -1,175 +1,64 @@
-// phone app/app.js — منطق تجريبي مطابق لـ prot/main.py + مزامنة لحظية حقيقية عبر Supabase/GitHub/Local
-function getApiBase(){
-  try{
-    const saved = localStorage.getItem('prot_api_base');
-    if(saved) return saved.replace(/\/+$/,'');
-    const host = location.hostname;
-    if(!host || host==='') return 'http://127.0.0.1:5000';
-    return `http://${host}:5000`;
-  }catch(e){ return 'http://127.0.0.1:5000'; }
-}
-const API_BASE = getApiBase();
-let useApi = true;
-function setApiBase(url){
-  localStorage.setItem('prot_api_base', url);
-  location.reload();
-}
-// اكتشاف تلقائي للسيرفر لو file:// وبدون إعداد سابق (يستخدم نفس منطق updater.js)
-async function autoDiscoverApiBase(){
-  try{
-    if(localStorage.getItem('prot_api_base')) return localStorage.getItem('prot_api_base');
-    if(location.hostname && location.hostname!=='') return null;
-    let subnet = null;
-    try{
-      subnet = await new Promise(res=>{
-        try{
-          const pc=new RTCPeerConnection({iceServers:[]});
-          pc.createDataChannel('');
-          pc.createOffer().then(o=> pc.setLocalDescription(o)).catch(()=> res(null));
-          let done=false;
-          pc.onicecandidate=e=>{
-            if(done||!e||!e.candidate||!e.candidate.candidate) return;
-            const m=e.candidate.candidate.match(/(\d+\.\d+\.\d+)\.\d+/);
-            if(m){ done=true; try{pc.close();}catch(_){} res(m[1]+'.'); }
-          };
-          setTimeout(()=> res(null), 1200);
-        }catch(_){ res(null); }
-      });
-    }catch(_){}
-    const prefixes = subnet ? [subnet] : [];
-    for(const c of ['192.168.1.','192.168.0.','192.168.43.','192.168.137.','10.0.2.','10.42.0.']) if(!prefixes.includes(c)) prefixes.push(c);
-    const tryBase = async (base)=>{
-      const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),700);
-      try{ const r=await fetch(base+'/api/app_version?_t='+Date.now(),{cache:'no-store',signal:ctrl.signal}); clearTimeout(t); return r.ok; }catch(_){ clearTimeout(t); return false; }
-    };
-    for(const pref of prefixes){
-      const order=[1,15,100,42,101,2,10,20];
-      const rest=[]; for(let i=1;i<=50;i++) if(!order.includes(i)) rest.push(i);
-      const all=[...order, ...rest];
-      for(let s=0;s<all.length;s+=15){
-        const batch=all.slice(s,s+15);
-        const res=await Promise.all(batch.map(async ip=> (await tryBase(`http://${pref}${ip}:5000`)) ? `http://${pref}${ip}:5000` : null));
-        const found=res.find(x=>x);
-        if(found){ try{ localStorage.setItem('prot_api_base', found); }catch(_){} console.log('[API] اكتشاف تلقائي',found); return found; }
-      }
-    }
-  }catch(_){}
-  return null;
-}
-if(!location.hostname || location.hostname===''){
-  setTimeout(()=>{ autoDiscoverApiBase().then(found=>{ if(found && found!==API_BASE) location.reload(); }); }, 2000);
-}
+// phone app/app.js — مزامنة سحابية فقط عبر Supabase (قراءة/كتابة) — نسخة نظيفة new
+// المصدر الوحيد: Supabase → phone و desktop
+// LocalStorage فقط كـ cache/offline وليس مصدراً
+
 const sample = [
   {id:17, name:"مفتاح انجليزي 10 بوصة", barcode:"8801000000011", category:"أجهزة", price:0, stock:5},
   {id:16, name:"ثاوزان تنظيف مواسير", barcode:"8808717568194", category:"إكسسوارات", price:10, stock:17},
   {id:15, name:"ترموستات كوري", barcode:"8807523246425", category:"قطع غيار", price:150, stock:10},
   {id:14, name:"شربون صاروخ ماكيتا 9 بوصة", barcode:"8807684468568", category:"قطع غيار", price:50, stock:17},
 ];
-let products=[...sample];
+let products=[];
 try{
   const ls = localStorage.getItem('prot_products');
   if(ls){
     const parsed = JSON.parse(ls);
     if(Array.isArray(parsed)) products = parsed;
-    if(Array.isArray(parsed) && parsed.length===0) products = [];
   }
 }catch(e){}
-if(!Array.isArray(products)) products=[...sample];
-// إذا كانت السحابة مهيأة، تجاهل العينات المحلية وابدأ فارغاً حتى تأتي السحابة (المصدر الوحيد)
-try{
-  if(window.SupabaseSync && SupabaseSync.isConfigured()){
-    // لو المنتجات الحالية هي مجرد العينات (4 عناصر التجريبية) ولم تأتِ من localStorage حقيقي، صفّرها
-    const isSampleOnly = products.length===sample.length && products.every((pr,i)=> pr.barcode===sample[i].barcode);
-    const hasRealStorage = (()=>{ try{ const v=localStorage.getItem('prot_products'); if(!v) return false; const a=JSON.parse(v); return Array.isArray(a) && a.length>0; }catch(e){return false;} })();
-    if(isSampleOnly && !hasRealStorage){
-      products = [];
-      console.log('[init] Supabase مهيأ — تم تجاهل العينات، انتظار السحابة');
-    }
-  }
-}catch(e){}
+if(!Array.isArray(products)) products=[];
 let cart=[];
 let selected=null;
 function _saveLocal(){
   try{ localStorage.setItem('prot_products', JSON.stringify(products)); }catch(e){}
 }
-// منع الوميض — تتبع آخر hash مرسوم
+// منع الوميض
 let _lastTableHash="", _lastUserHash="", _lastPricingHash="";
 function _hashList(arr){
   try{ return JSON.stringify(arr.map(p=> p.id+":"+p.price+":"+p.stock+":"+p.name).join("|")); }catch(e){ return ""; }
 }
 
-// --- تتبع المحذوفات لمنع الرجوع (tombstone) ---
-const DELETED_KEY = 'deleted_barcodes';
-function _getDeletedMap(){
+// --- Cache helper ---
+function _clearCache(){
+  try{ localStorage.removeItem('prot_products'); }catch(e){}
+}
+window.forceCloudSync = async ()=>{
   try{
-    const raw = localStorage.getItem(DELETED_KEY);
-    if(!raw) return {};
-    const j = JSON.parse(raw);
-    return (j && typeof j==='object') ? j : {};
-  }catch(e){ return {}; }
-}
-function _saveDeletedMap(m){
-  try{ localStorage.setItem(DELETED_KEY, JSON.stringify(m)); }catch(e){}
-}
-function _recordDeleted(barcode){
-  if(!barcode) return;
-  try{
-    const m = _getDeletedMap();
-    m[String(barcode).trim()] = new Date().toISOString().slice(0,19).replace('T',' ');
-    // احتفظ بآخر 200 فقط، نظف الأقدم من 60 يوم
-    const keys = Object.keys(m);
-    if(keys.length>200){
-      const sorted = keys.map(k=> [k, m[k]]).sort((a,b)=> a[1].localeCompare(b[1]));
-      for(let i=0;i< sorted.length-200;i++) delete m[sorted[i][0]];
-    }
-    _saveDeletedMap(m);
-  }catch(e){}
-}
-window.forceCloudSync = async ()=>{ try{ const d=await SupabaseSync.getProducts(); _applyProducts(d,'Supabase'); _setBadge(products.length); alert('✓ تمت المزامنة من السحابة: '+products.length); }catch(e){ alert('فشل: '+e.message);} };
-function _isDeleted(barcode, remoteTime){
-  if(!barcode) return false;
-  try{
-    const m = _getDeletedMap();
-    const delTime = m[String(barcode).trim()];
-    if(!delTime) return false;
-    if(!remoteTime) return true;
-    // لو الحذف أحدث من تحديث السحابة → لا ترجع
-    return delTime >= (remoteTime||'');
-  }catch(e){ return false; }
-}
-function _clearDeleted(barcode){
-  if(!barcode) return;
-  try{
-    const m = _getDeletedMap();
-    if(m[String(barcode).trim()]){
-      delete m[String(barcode).trim()];
-      _saveDeletedMap(m);
-    }
-  }catch(e){}
-}
+    if(!window.SupabaseSync || !SupabaseSync.isConfigured()){ alert('Supabase غير مهيأ'); return; }
+    const d=await SupabaseSync.getProducts();
+    _applyProducts(d,'Supabase');
+    _setBadge(products.length);
+    alert('✓ تمت المزامنة من السحابة: '+products.length);
+  }catch(e){ alert('فشل: '+e.message); }
+};
+window.clearLocalCache = ()=>{
+  if(confirm('مسح الكاش المحلي وإعادة التحميل من السحابة؟')){
+    _clearCache();
+    localStorage.removeItem('deleted_barcodes');
+    location.reload();
+  }
+};
 
-// --- مزامنة لحظية جذرية: Supabase Realtime + GitHub + Local API ---
-const GITHUB_REPO = 'ABDelrahmanmohamed555/barcode_phoneapp';
-const GITHUB_PRODUCTS_RAW = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/products.json`;
-const GITHUB_PRODUCTS_API = `https://api.github.com/repos/${GITHUB_REPO}/contents/products.json`;
-const GITHUB_TOKEN_KEY = 'github_token';
-function getGitHubToken(){ try{ return localStorage.getItem(GITHUB_TOKEN_KEY) || null; }catch(e){ return null; } }
-function setGitHubToken(t){ try{ if(t) localStorage.setItem(GITHUB_TOKEN_KEY, t); else localStorage.removeItem(GITHUB_TOKEN_KEY); }catch(e){} }
-function b64EncodeUtf8(str){ return btoa(unescape(encodeURIComponent(str))); }
-function b64DecodeUtf8(b64){ return decodeURIComponent(escape(atob(b64))); }
-let _githubSha = null;
-let _lastSyncTime = 0;
 let _supaRealtimeActive = false;
 let _lastBadgeCount = -1;
 let _syncFailCount = 0;
 function _setBadge(count){
   const badge=document.getElementById('syncStatus');
   if(!badge) return;
-  // ثبت اللون والنص — لا يتغير بين محلي/سحابي لمنع الوميض
   if(_lastBadgeCount === count) return;
   _lastBadgeCount = count;
   badge.textContent=`مزامن ✓ ${count}`;
-  badge.style.color='#3a86c8'; // أزرق ثابت
+  badge.style.color='#3a86c8';
   _syncFailCount = 0;
 }
 
@@ -188,331 +77,88 @@ function _applyProducts(newData, source){
     created_at: p.created_at||'',
     updated_at: p.updated_at||''
   })).filter(p=> p.barcode);
+  // السحابة هي المصدر الوحيد — استبدال كامل
+  const oldHash = _hashList(products);
+  const newHash = _hashList(normalized);
+  // تحقق سريع
+  const same = products.length===normalized.length && products.every(pr=>{
+    const np = normalized.find(x=> x.barcode===pr.barcode);
+    return np && String(np.price)===String(pr.price) && String(np.stock)===String(pr.stock) && np.name===pr.name;
+  });
+  if(same && oldHash===newHash) return false;
+  const prevCount = products.length;
+  products = normalized.slice().sort((a,b)=> (b.id||0)-(a.id||0));
+  _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
+  _saveLocal();
+  renderUserTable(); renderPricingTable();
+  const tb=document.getElementById('tableBody'); if(tb) renderTable();
+  console.log(`✓ سحابة ${source}: ${prevCount} -> ${products.length}`);
+  return true;
+}
 
-  const isCloud = String(source).includes("Supabase"); // السحابة هي المصدر الوحيد
-  // --- وضع السحابة فقط ---
-  if(isCloud){
-    // لو السحابة مهيأة، استبدال كامل بدون دمج — السحابة هي الحقيقة
-    const oldHash = _hashList(products);
-    const newHash = _hashList(normalized);
-    const sameLength = products.length===normalized.length;
-    const sameBarcodes = sameLength && products.every((pr,i)=>{
-      // مقارنة سريعة بالباركود والسعر
-      const np = normalized.find(x=> x.barcode===pr.barcode);
-      return np && String(np.price)===String(pr.price) && String(np.stock)===String(pr.stock) && np.name===pr.name;
-    });
-    // لو نفس البيانات تماماً لا حاجة لإعادة الرسم
-    if(sameBarcodes && oldHash===newHash){
-      return false;
-    }
-    // استبدال كامل حتى لو فارغ — هذا يحذف المحذوفات فوراً
-    const prevCount = products.length;
-    products = normalized.slice().sort((a,b)=> (b.id||0)-(a.id||0));
-    // مسح الهاشات لإجبار إعادة الرسم
-    _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
-    _saveLocal();
-    // تنظيف tombstone للباركودات التي عادت من السحابة (إعادة إنشاء)
-    try{
-      for(const rp of normalized){
-        try{ if(rp.barcode) _clearDeleted(rp.barcode); }catch(e){}
-      }
-    }catch(e){}
-    renderUserTable(); renderPricingTable();
-    const tb=document.getElementById('tableBody'); if(tb) renderTable();
-    console.log(`✓ سحابة ${source}: ${prevCount} -> ${products.length} (استبدال كامل)`);
-    return true;
-  }
-
-  // --- وضع احتياطي (GitHub/محلي) — دمج تقليدي ---
-  const byBarcode = {};
-  const byId = {};
-  products.forEach(p=>{ if(p.barcode) byBarcode[p.barcode]=p; byId[p.id]=p; });
-  let changed = false;
-  let added = 0, updated = 0;
-  for(const rp of normalized){
-    if(!rp.barcode) continue;
-    try{
-      const rTime = rp.updated_at || rp.created_at || "";
-      if(_isDeleted(rp.barcode, rTime)) continue;
-    }catch(e){}
-    const local = byBarcode[rp.barcode] || byId[rp.id];
-    if(!local){
-      products.push(rp);
-      changed = true; added++;
-    } else {
-      const rTime = rp.updated_at || rp.created_at || "";
-      const lTime = local.updated_at || local.created_at || "";
-      const needUpdate = (rTime > lTime) || (rTime===lTime && (parseFloat(rp.price)!==parseFloat(local.price) || parseInt(rp.stock)!==parseInt(local.stock) || rp.name!==local.name));
-      const localNewer = lTime > rTime;
-      if(localNewer) continue;
-      if(needUpdate){
-        let diff = false;
-        for(const k of ['name','barcode','category','price','stock','description','image_path','barcode_path','updated_at','created_at']){
-          if(String(rp[k]||'') !== String(local[k]||'')){
-            local[k]=rp[k];
-            diff=true;
+async function syncFromApi(){
+  // السحابة فقط
+  if(!window.SupabaseSync || !window.SupabaseSync.isConfigured()){
+    const badge=document.getElementById('syncStatus');
+    if(badge){ badge.textContent='غير مهيأ - Supabase'; badge.style.color='#c8943a'; }
+    // حاول عرض الكاش فقط
+    if(products.length===0){
+      try{
+        const ls = localStorage.getItem('prot_products');
+        if(ls){
+          const cached = JSON.parse(ls);
+          if(Array.isArray(cached) && cached.length>0){
+            console.log('[sync] عرض الكاش المحلي (offline)');
+            // لا نستدعي _applyProducts حتى لا نعتبر الكاش مصدراً
           }
         }
-        if(diff){ changed=true; updated++; }
-      }
+      }catch(e){}
     }
-  }
-  let deleted = 0;
-  if(normalized.length>0){
-    const remoteBarcodes = new Set(normalized.map(p=> String(p.barcode||'').trim()).filter(Boolean));
-    const toDelete = [];
-    const isAuthoritative = String(source).includes("GitHub");
-    if(isAuthoritative){
-      for(const lp of [...products]){
-        const bc = String(lp.barcode||'').trim();
-        if(!bc || remoteBarcodes.has(bc)) continue;
-        try{ if(_isDeleted(bc)) continue; }catch(e){}
-        const lTime = lp.updated_at||lp.created_at||'';
-        let isNew = false;
-        try{
-          const age = Date.now() - new Date(lTime.replace(' ','T')).getTime();
-          if(!isNaN(age) && age < 30000) isNew = true;
-        }catch{}
-        if(isNew) continue;
-        toDelete.push(lp);
-      }
-    } else {
-      const diff = products.length - normalized.length;
-      const shouldBulkDelete = !(normalized.length < products.length * 0.5 && diff > 5);
-      if(shouldBulkDelete){
-        for(const lp of [...products]){
-          const bc = String(lp.barcode||'').trim();
-          if(!bc || remoteBarcodes.has(bc)) continue;
-          try{ if(_isDeleted(bc)) continue; }catch(e){}
-          const lTime = lp.updated_at||lp.created_at||'';
-          let isNew = false;
-          try{
-            const age = Date.now() - new Date(lTime.replace(' ','T')).getTime();
-            if(!isNaN(age) && age < 30000) isNew = true;
-          }catch{}
-          if(isNew) continue;
-          toDelete.push(lp);
-        }
-      }
-    }
-    if(toDelete.length>0){
-      for(const d of toDelete){
-        try{ _recordDeleted(d.barcode); }catch(e){}
-        products = products.filter(p=> p.barcode !== d.barcode);
-        deleted++;
-      }
-      changed = true;
-    }
-  }
-  if(changed){
-    products.sort((a,b)=> (b.id||0)-(a.id||0));
-    _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
-    _saveLocal();
-    renderUserTable(); renderPricingTable();
-    const tb=document.getElementById('tableBody'); if(tb) renderTable();
-    console.log(`✓ دمج ${normalized.length} من ${source} (+${added} جديد، ~${updated} تحديث، -${deleted} حذف)`);
-    return true;
-  }
-  if(JSON.stringify(normalized)!==JSON.stringify(products)){
-    console.log(`[sync] تجاهل استبدال كامل من ${source} — المحلي أحدث`);
-    return false;
-  }
-  return false;
-}
-
-async function syncFromGitHub(){
-  const token = getGitHubToken();
-  // 1) Contents API (أحدث، بدون كاش)
-  try{
-    const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 7000);
-    const headers = {'Accept':'application/vnd.github.v3+json'};
-    if(token) headers['Authorization'] = `token ${token}`;
-    const r = await fetch(GITHUB_PRODUCTS_API + '?_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal, headers});
-    clearTimeout(t);
-    if(r.ok){
-      const j = await r.json();
-      _githubSha = j.sha;
-      const content = b64DecodeUtf8(j.content.replace(/\n/g,''));
-      const data = JSON.parse(content);
-      if(Array.isArray(data)){
-        _applyProducts(data, `GitHub API ${token?'✓':'anon'} sha:${_githubSha?.slice(0,7)}`);
-        _setBadge(products.length);
-        return true;
-      }
-    } else if(r.status===404){
-      console.log('GitHub products.json غير موجود - سيُنشأ عند أول دفع');
-    }
-  }catch(e){ console.log('GitHub API fail', e.message); }
-  // 2) fallback Raw (مع cache-bust)
-  for(const rawUrl of [GITHUB_PRODUCTS_RAW]){
-    try{
-      const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 7000);
-      const r = await fetch(rawUrl + '?_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal, mode:'cors', credentials:'omit'});
-      clearTimeout(t);
-      if(!r.ok) throw new Error(r.status);
-      const data = await r.json();
-      if(Array.isArray(data)){
-        _applyProducts(data, `GitHub Raw`);
-        _setBadge(products.length);
-        return true;
-      }
-    }catch(e){ console.log('GitHub Raw fail', e.message); }
-  }
-  return false;
-}
-async function githubPushProducts(newProducts, message){
-  const token = getGitHubToken();
-  if(!token){
-    console.log('GitHub push skip: no token - استخدم Supabase أو API المحلي');
-    return false;
-  }
-  try{
-    let sha = _githubSha;
-    if(!sha){
-      const r = await fetch(GITHUB_PRODUCTS_API, {headers:{'Accept':'application/vnd.github.v3+json','Authorization':`token ${token}`}});
-      if(r.ok){ const j=await r.json(); sha=j.sha; _githubSha=sha; }
-    }
-    const content = b64EncodeUtf8(JSON.stringify(newProducts, null, 2));
-    const body = {message: message || `auto sync products ${new Date().toISOString()}`, content, sha};
-    if(!sha) delete body.sha;
-    const r = await fetch(GITHUB_PRODUCTS_API, {method:'PUT', headers:{'Content-Type':'application/json','Accept':'application/vnd.github.v3+json','Authorization':`token ${token}`}, body: JSON.stringify(body)});
-    if(!r.ok) throw new Error(await r.text());
-    const j = await r.json();
-    _githubSha = j.content.sha;
-    console.log('✓ GitHub push products', _githubSha.slice(0,7));
-    return true;
-  }catch(e){ console.log('GitHub push fail', e.message); return false; }
-}
-async function syncFromLocalFile(){
-  try{
-    const r = await fetch('products.json?_t='+Date.now(), {cache:'no-store'});
-    if(!r.ok) throw new Error(r.status);
-    const data = await r.json();
-    if(Array.isArray(data)){
-      _applyProducts(data, 'محلي');
-      _setBadge(products.length);
-      return true;
-    }
-  }catch(e){}
-  return false;
-}
-async function syncFromApi(){
-  if(!useApi){
-    await syncFromLocalFile();
     return;
   }
-  // 1) السحابة فقط — إذا كانت مهيأة فهي المصدر الوحيد
-  if(window.SupabaseSync && SupabaseSync.isConfigured()){
-    try{
-      const data = await SupabaseSync.getProducts();
-      if(Array.isArray(data)){
-        // استبدال كامل حتى لو فارغ — هذا يحذف المحذوفات فوراً
-        _applyProducts(data, 'Supabase');
-        _setBadge(products.length);
-        console.log(`✓ Supabase مزامن: ${data.length} منتج (سحابة فقط)`);
-        return;
-      }
-    }catch(e){
-      console.log('Supabase fail — محاولة fallback', e.message);
-      // فقط عند فشل السحابة نستخدم fallback
+  try{
+    const data = await SupabaseSync.getProducts();
+    if(Array.isArray(data)){
+      _applyProducts(data, 'Supabase');
+      _setBadge(products.length);
+      console.log(`✓ Supabase: ${data.length} منتج`);
+      return;
     }
-  }
-  // 2) fallback فقط لو السحابة غير مهيأة أو فشلت
-  if(!window.SupabaseSync || !SupabaseSync.isConfigured()){
-    // Local API
-    const bases = [];
-    const localBase = getApiBase();
-    if(localBase) bases.push(localBase);
-    const cfFromStorage = (()=>{ try{ return localStorage.getItem('public_cf_url')||''; }catch(e){return '';} })();
-    if(cfFromStorage && !bases.includes(cfFromStorage)) bases.push(cfFromStorage);
-    for(const base of bases){
-      try{
-        const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 2500);
-        const r = await fetch(`${base}/api/products?_t=`+Date.now(), {cache:'no-store', signal: ctrl.signal, mode:'cors', credentials:'omit'});
-        clearTimeout(t);
-        if(!r.ok) throw new Error(r.status);
-        const data = await r.json();
-        if(Array.isArray(data)){
-          _applyProducts(data, base);
-          _setBadge(products.length);
-          console.log(`✓ تمت المزامنة (fallback): ${data.length} منتج من ${base} -> محلي ${products.length}`);
-          return;
-        }
-      }catch(e){ console.log('API', base, 'غير متاح', e.message); }
-    }
-    // GitHub fallback
-    if(await syncFromGitHub()) return;
-    // محلي
-    if(await syncFromLocalFile()) return;
-  } else {
-    // السحابة مهيأة لكن فشلت — لا تعرض بيانات قديمة على أنها سحابة، أظهر غير متصل
+  }catch(e){
+    console.log('Supabase fail', e.message);
     _syncFailCount++;
     if(_syncFailCount >= 2){
       const badge=document.getElementById('syncStatus');
       if(badge){ badge.textContent='غير متصل - السحابة'; badge.style.color='#c8943a'; }
     }
-    return;
-  }
-  _syncFailCount++;
-  if(_syncFailCount < 2) return; // لا ترمش — انتظر فشلين متتاليين
-  const badge=document.getElementById('syncStatus');
-  if(badge){
-    if(window.SupabaseSync && !SupabaseSync.isConfigured()){
-      badge.textContent='غير متصل - اضغط ⚙ Supabase أو ⚙ GitHub';
-    } else {
-      badge.textContent='غير متصل - محلي';
-    }
-    badge.style.color='#c8943a';
   }
 }
+
 async function apiPostProduct(prod){
-  // أضف طوابع زمنية لمنع الرجوع
   if(!prod.created_at) prod.created_at = new Date().toISOString().slice(0,19).replace('T',' ');
   if(!prod.updated_at) prod.updated_at = prod.created_at;
-  // جرب Supabase أولاً
-  if(window.SupabaseSync && SupabaseSync.isConfigured()){
+  if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
     try{
       const saved = await SupabaseSync.addProduct(prod);
       if(saved) return saved;
-    }catch(e){ console.log('Supabase POST fail', e.message); }
+    }catch(e){ console.log('Supabase POST fail', e.message); throw e; }
   }
-  // جرب Local API
-  const bases = [getApiBase()];
-  const cf = (()=>{ try{ return localStorage.getItem('public_cf_url'); }catch(e){return null;} })();
-  if(cf) bases.push(cf);
-  for(const base of bases){
-    try{
-      const r=await fetch(`${base}/api/products`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(prod)});
-      if(!r.ok) throw new Error(await r.text());
-      return await r.json();
-    }catch(e){ console.log('POST fail', base, e.message); }
-  }
-  return null;
+  throw new Error('Supabase غير متاح - لا يمكن الحفظ');
 }
+
 async function apiPatchPrice(id, price){
   const now = new Date().toISOString().slice(0,19).replace('T',' ');
-  if(window.SupabaseSync && SupabaseSync.isConfigured()){
+  if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
     try{
       const saved = await SupabaseSync.updateProduct(id, {price, updated_at: now});
       if(saved) return saved;
-    }catch(e){ console.log('Supabase PATCH fail', e.message); }
+    }catch(e){ console.log('Supabase PATCH fail', e.message); throw e; }
   }
-  const bases = [getApiBase()];
-  const cf = (()=>{ try{ return localStorage.getItem('public_cf_url'); }catch(e){return null;} })();
-  if(cf) bases.push(cf);
-  for(const base of bases){
-    try{
-      const r=await fetch(`${base}/api/products/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({price})});
-      if(!r.ok) throw new Error(await r.text());
-      return await r.json();
-    }catch(e){ console.log('PATCH fail', base, e.message); }
-  }
-  return null;
+  throw new Error('Supabase غير متاح');
 }
 
-// تفعيل Supabase Realtime اللحظي
 function initSupabaseRealtime(){
-  if(!window.SupabaseSync || !SupabaseSync.isConfigured() || !SupabaseSync.subscribeRealtime) return;
+  if(!window.SupabaseSync || !window.SupabaseSync.isConfigured() || !window.SupabaseSync.subscribeRealtime) return;
   if(_supaRealtimeActive) return;
   try{
     const ok = SupabaseSync.subscribeRealtime((newData)=>{
@@ -522,10 +168,11 @@ function initSupabaseRealtime(){
     });
     if(ok){
       _supaRealtimeActive = true;
-      console.log('✓ Supabase Realtime مفعل - مزامنة لحظية');
+      console.log('✓ Supabase Realtime مفعل');
     }
   }catch(e){ console.log('RT init fail', e.message); }
 }
+
 
 function genBarcode(){
   const prefix="880";
@@ -542,47 +189,25 @@ function clearForm(){
 async function saveProduct(){
   const name=pName.value.trim(), barcode=pBarcode.value.trim(), cat=pCat.value, price=parseFloat(pPrice.value||0), stock=parseInt(pStock.value||0), desc=pDesc.value.trim();
   if(!name) return alert("ادخل اسم المنتج");
-  // لو الباركود كان محذوف سابقاً وتمت إعادة إنشائه عمداً — امسح tombstone
-  try{ if(barcode) _clearDeleted(barcode); }catch(e){}
-  // حتى لو price 0 يحفظ تلقائياً (محلي + API + سحابي)
-  const saved = await apiPostProduct({name, barcode, category:cat, price, stock, description:desc});
-  if(saved && saved.id){
-    try{ if(saved.barcode) _clearDeleted(saved.barcode); }catch(e){}
-    // تم الحفظ عبر Supabase أو API - حدث المحلي فوراً
-    const exists = products.find(p=> p.id===saved.id || p.barcode===saved.barcode);
-    if(!exists) products.unshift(saved);
-    else Object.assign(exists, saved);
-    _saveLocal();
-    renderUserTable();
-    if(document.getElementById('tableBody')) renderTable();
-    renderPricingTable();
-    // أيضاً ارفع لـ GitHub كـ نسخة احتياطية
-    githubPushProducts(products, `auto sync products add ${name}`).catch(()=>{});
-    clearForm();
-    alert(`تم الحفظ ومزامنته لحظياً ✓\n${saved.name} - ${saved.price} جنيه`);
+  try{
+    const saved = await apiPostProduct({name, barcode, category:cat, price, stock, description:desc});
+    if(saved && saved.id){
+      const exists = products.find(p=> p.id===saved.id || p.barcode===saved.barcode);
+      if(!exists) products.unshift(saved);
+      else Object.assign(exists, saved);
+      _saveLocal();
+      renderUserTable();
+      if(document.getElementById('tableBody')) renderTable();
+      renderPricingTable();
+      clearForm();
+      alert(`تم الحفظ ومزامنته لحظياً ✓\n${saved.name} - ${saved.price} جنيه`);
+      return;
+    }
+  }catch(e){
+    alert('فشل الحفظ: '+e.message);
     return;
   }
-  // fallback محلي + GitHub
-  const id=Math.max(0,...products.map(p=>p.id))+1;
-  const nowStr = new Date().toISOString().slice(0,19).replace('T',' ');
-  const finalBarcode = barcode||"880"+Date.now();
-  try{ _clearDeleted(finalBarcode); }catch(e){}
-  const newProd={id,name,barcode:finalBarcode,category:cat,price,stock,description:desc, created_at: nowStr, updated_at: nowStr};
-  products.unshift(newProd);
-  _saveLocal();
-  renderUserTable();
-  if(document.getElementById('tableBody')) renderTable();
-  renderPricingTable();
-  // حل جذري: ارفع لـ Supabase و GitHub حتى لو API غير متصل
-  if(window.SupabaseSync && SupabaseSync.isConfigured()){
-    SupabaseSync.addProduct(newProd).then(ok=>{
-      if(ok) console.log('✓ Supabase fallback push');
-    }).catch(()=>{});
-  }
-  githubPushProducts(products, `auto sync products add ${name}`).then(ok=>{
-    if(ok) console.log('✓ تم رفع المنتج لـ GitHub');
-  });
-  alert(`تم الحفظ محلياً ✓\n${name} - ${price} جنيه${getGitHubToken()?' (سيرفع لـ GitHub)':''}${window.SupabaseSync && SupabaseSync.isConfigured()?' (سيرفع لـ Supabase)':''}`);
+  alert('فشل الحفظ - تأكد من الاتصال بالسحابة');
 }
 
 function renderTable(){
@@ -590,7 +215,6 @@ function renderTable(){
   const body=document.getElementById('tableBody');
   if(!body) return;
   const q=(searchEl ? searchEl.value : "").trim().toLowerCase();
-  // منع الوميض: لا تعيد الرسم إذا البيانات نفسها
   try{
     const curHash = _hashList(products) + "|q:" + q;
     if(curHash === _lastTableHash && body.children.length>0) return;
@@ -630,20 +254,16 @@ function editProd(id){ const p=products.find(x=>x.id===id); if(!p) return; pName
 function delProd(id){
   const toDel = products.find(p=> p.id===id);
   const bc = toDel ? toDel.barcode : null;
-  if(bc) _recordDeleted(bc);
-  // حاول حذف من Supabase أيضاً (id و باركود)
-  if(window.SupabaseSync && SupabaseSync.isConfigured()){
-    SupabaseSync.deleteProduct(id, bc).catch(()=>{});
+  if(!confirm(`حذف ${toDel?toDel.name:''}؟`)) return;
+  if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
+    SupabaseSync.deleteProduct(id, bc).then(()=>{
+      console.log('✓ حذف من السحابة');
+    }).catch(e=>{ alert('فشل الحذف: '+e.message); });
+  } else {
+    alert('Supabase غير مهيأ');
+    return;
   }
-  // أيضاً حاول حذف بالباركود عبر API المحلي إذا متاح
-  try{
-    if(bc){
-      fetch(getApiBase()+`/api/products/by_barcode/${encodeURIComponent(bc)}`, {method:'DELETE'}).catch(()=>{});
-      fetch(getApiBase()+`/api/products/${id}`, {method:'DELETE'}).catch(()=>{});
-    }
-  }catch(e){}
   products=products.filter(p=>p.id!==id); _saveLocal(); renderUserTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); renderPricingTable();
-  githubPushProducts(products, `delete product ${id}`).catch(()=>{});
 }
 
 function switchRole(r){
@@ -756,33 +376,23 @@ async function setPrice(id){
   const inp=document.getElementById('price_'+id);
   const v=parseFloat(inp.value);
   if(isNaN(v) || v<0) return alert('ادخل سعر صحيح >= 0');
-  const updated = await apiPatchPrice(id, v);
-  if(updated){
-    const p=products.find(x=>x.id===id);
-    if(p) p.price=updated.price;
-    _saveLocal();
-    renderPricingTable();
-    renderUserTable();
-    const tb=document.getElementById('tableBody'); if(tb) renderTable();
-    // رفع لـ GitHub كنسخة احتياطية
-    githubPushProducts(products, `price ${id}=${v}`).catch(()=>{});
-    alert(`تم تحديث السعر ومزامنته ✓ ${updated.price} جنيه`);
+  try{
+    const updated = await apiPatchPrice(id, v);
+    if(updated){
+      const p=products.find(x=>x.id===id);
+      if(p) p.price=updated.price;
+      _saveLocal();
+      renderPricingTable();
+      renderUserTable();
+      const tb=document.getElementById('tableBody'); if(tb) renderTable();
+      alert(`تم تحديث السعر ومزامنته ✓ ${updated.price} جنيه`);
+      return;
+    }
+  }catch(e){
+    alert('فشل تحديث السعر: '+e.message);
     return;
   }
-  const p=products.find(x=>x.id===id);
-  if(!p) return;
-  p.price=v;
-  _saveLocal();
-  renderPricingTable();
-  renderUserTable();
-  const tb=document.getElementById('tableBody'); if(tb) renderTable();
-  if(window.SupabaseSync && SupabaseSync.isConfigured()){
-    SupabaseSync.updateProduct(id, {price: v}).catch(()=>{});
-  }
-  githubPushProducts(products, `auto sync products price ${id}=${v}`).then(ok=>{
-    if(ok) console.log('✓ GitHub price push');
-  });
-  alert(`تم تحديث السعر محلياً ✓ ${v} جنيه${getGitHubToken()?' (سيرفع لـ GitHub)':''}`);
+  alert('فشل تحديث السعر');
 }
 function scanEnter(){
   const el=document.getElementById('searchUser');
@@ -853,13 +463,10 @@ setInterval(()=>{ const d=new Date(); const cl=document.getElementById('clock');
 const scanEl=document.getElementById('scan');
 if(scanEl) scanEl.addEventListener('keydown', e=>{ if(e.key==='Enter') scanEnter(); });
 genBarcode(); renderTable(); renderUserTable(); renderPricingTable(); if(typeof renderCart==='function') renderCart();
-try{ document.getElementById('apiUrl').textContent=getApiBase(); }catch(e){}
-syncFromLocalFile().then(()=> syncFromApi());
+syncFromApi();
 initSupabaseRealtime();
-setTimeout(()=>{ try{ const el=document.getElementById('apiUrl'); if(el) el.textContent=getApiBase(); }catch(e){} }, 3500);
-// مزامنة في الخلفية كل 8 ثواني — بدون وميض (المزامنة تدمج فقط لو فيه جديد + منع إعادة الرسم)
 setInterval(()=>{ syncFromApi(); }, 8000);
-setInterval(()=>{ if(window.SupabaseSync && SupabaseSync.isConfigured() && !_supaRealtimeActive) initSupabaseRealtime(); }, 8000);
+setInterval(()=>{ if(window.SupabaseSync && window.SupabaseSync.isConfigured() && !_supaRealtimeActive) initSupabaseRealtime(); }, 8000);
 
 // يتعرف على ريزولوشن الشاشة
 let _lastW=0,_lastH=0,_screenTimer=null;

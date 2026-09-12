@@ -170,23 +170,41 @@
       ws.onmessage = (ev)=>{
         try{
           const msg = JSON.parse(ev.data);
-          // console.log('[Supabase RT]', msg);
-          if(msg.event === "postgres_changes" || (msg.payload && msg.payload.type)){
-            // fresh payload
-            const p = msg.payload;
-            if(p && (p.eventType || p.type)){
-              console.log('[Supabase RT] change', p.eventType || p.type);
-              // اطلب تحديث كامل
-              getProducts().then(data=>{ try{ _onChange(data); }catch(e){} }).catch(()=>{});
-            }
+          // console.log('[Supabase RT raw]', JSON.stringify(msg).slice(0,300));
+          let eventType = null;
+          let payloadData = null;
+          // Supabase الجديد يرسل payload.data.eventType
+          if(msg.payload && msg.payload.data && msg.payload.data.eventType){
+            eventType = msg.payload.data.eventType;
+            payloadData = msg.payload.data;
+          } else if(msg.payload && msg.payload.eventType){
+            eventType = msg.payload.eventType;
+            payloadData = msg.payload;
+          } else if(msg.payload && msg.payload.type){
+            eventType = msg.payload.type;
+            payloadData = msg.payload;
+          } else if(msg.event === "postgres_changes"){
+            // قد يكون الحدث مباشرة في msg.event
+            eventType = "postgres_changes";
           }
-          // also handle broadcast
+          // أيضاً تحقق من msg.event نفسه INSERT/UPDATE/DELETE
+          if(!eventType && msg.event && ["INSERT","UPDATE","DELETE"].includes(msg.event)){
+            eventType = msg.event;
+          }
+          if(eventType){
+            console.log('[Supabase RT] change', eventType, payloadData ? (payloadData.table || TABLE) : '');
+            // لأي تغيير (INSERT/UPDATE/DELETE) اطلب تحديث كامل — يضمن معالجة DELETE موثوقة
+            getProducts().then(data=>{ try{ _onChange(data); }catch(e){} }).catch(()=>{});
+            return;
+          }
+          // fallback: أي رسالة على قناة الجدول → حدث
           if(msg.topic && msg.topic.includes(TABLE) && msg.payload){
-            if(msg.payload.record || msg.payload.new || msg.event==='INSERT' || msg.event==='UPDATE' || msg.event==='DELETE'){
+            if(msg.payload.record || msg.payload.new || msg.payload.old || msg.payload.data){
+              console.log('[Supabase RT] fallback refresh');
               getProducts().then(data=>{ try{ _onChange(data); }catch(e){} }).catch(()=>{});
             }
           }
-        }catch(e){}
+        }catch(e){ console.log('[Supabase RT] parse fail', e.message); }
       };
       ws.onerror = (e)=>{ console.log('[Supabase RT] error', e); };
       ws.onclose = ()=>{

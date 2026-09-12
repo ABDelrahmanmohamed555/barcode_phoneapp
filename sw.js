@@ -1,7 +1,7 @@
 // sw.js — Service Worker للتحديث التلقائي (PWA)
 // يخزن التطبيق ويحدثه عند وجود version.json جديد
 const CACHE_PREFIX = 'nahal-ota-';
-let CURRENT_CACHE = CACHE_PREFIX + 'v1.0.0';
+let CURRENT_CACHE = CACHE_PREFIX + 'vnew';
 
 const ASSETS = [
   './',
