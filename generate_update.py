@@ -94,13 +94,13 @@ def main():
             except Exception:
                 pass
 
-    # --- OTA V2: حدّث sw.js ليحمل رقم النسخة الجديدة (حتى لا يحذف كاش OTA المستقبلي) ---
+    # --- OTA V3: حدّث CUR و CURRENT_VERSION و sw.js تلقائياً ---
     try:
+        import re
+        # 1) sw.js
         sw_path = BASE / "sw.js"
         if sw_path.exists():
             sw_text = sw_path.read_text(encoding="utf-8")
-            import re
-            # حدّث CURRENT_CACHE + لوج
             new_cache_line = f"let CURRENT_CACHE = CACHE_PREFIX + 'v{new_ver}';"
             sw_text_new = re.sub(r"let CURRENT_CACHE\s*=\s*CACHE_PREFIX\s*\+\s*'v[^']*';", new_cache_line, sw_text)
             sw_text_new = re.sub(r"\[SW [^\]]+\] install", f"[SW {new_ver}] install", sw_text_new)
@@ -108,8 +108,49 @@ def main():
             if sw_text_new != sw_text:
                 sw_path.write_text(sw_text_new, encoding="utf-8")
                 print(f"  → حدّث sw.js إلى v{new_ver}")
+        # 2) updater.js CURRENT_VERSION
+        upd_path = BASE / "updater.js"
+        if upd_path.exists():
+            t = upd_path.read_text(encoding="utf-8")
+            t2 = re.sub(r'const CURRENT_VERSION\s*=\s*"[^"]*"', f'const CURRENT_VERSION = "{new_ver}.0"', t)
+            # fallback لو كان بدون .0
+            if t2==t:
+                t2 = re.sub(r'const CURRENT_VERSION\s*=\s*"[^"]*"', f'const CURRENT_VERSION = "{new_ver}"', t)
+            # صحح لـ new_ver بدون .0 إذا new_ver فيه 3 أجزاء
+            # اجعلها دائماً new_ver
+            t2 = re.sub(r'const CURRENT_VERSION\s*=\s*"[^"]*"', f'const CURRENT_VERSION = "{new_ver}"', t2)
+            if t2!=t:
+                upd_path.write_text(t2, encoding="utf-8")
+                print(f"  → حدّث updater.js CURRENT_VERSION إلى {new_ver}")
+        # 3) index.html — كل CUR/cur
+        idx_path = BASE / "index.html"
+        if idx_path.exists():
+            it = idx_path.read_text(encoding="utf-8")
+            # OTA_BOOT CUR
+            it2 = re.sub(r'const CUR\s*=\s*"[^"]*"', f'const CUR="{new_ver}"', it)
+            # جميع const cur = "x"
+            it2 = re.sub(r'const cur\s*=\s*"[^"]*"', f'const cur="{new_ver}"', it2)
+            # also showToast fallback version
+            it2 = re.sub(r"localStorage\.getItem\('ota_version'\) \|\| '[^']*'", f"localStorage.getItem('ota_version') || '{new_ver}'", it2)
+            if it2!=it:
+                idx_path.write_text(it2, encoding="utf-8")
+                print(f"  → حدّث index.html CUR إلى {new_ver}")
+        # 4) app.js CUR للتنظيف
+        app_path = BASE / "app.js"
+        if app_path.exists():
+            at = app_path.read_text(encoding="utf-8")
+            at2 = re.sub(r'const CUR\s*=\s*"[^"]*"', f'const CUR="{new_ver}"', at)
+            at2 = re.sub(r'const CUR\s*=\s*"[^"]*"', f'const CUR="{new_ver}"', at2)
+            # app.js autoClean CUR
+            at2 = re.sub(r'const CUR\s*=\s*"[^"]*"', f'const CUR="{new_ver}"', at2)
+            at2 = re.sub(r'CUR="[^"]*"', f'CUR="{new_ver}"', at2) if 'CUR=' in at2 else at2
+            # تحديداً السطر const CUR="3.6.0"
+            at2 = re.sub(r'CUR="[^"]*"', f'CUR="{new_ver}"', at2)
+            if at2!=at:
+                app_path.write_text(at2, encoding="utf-8")
+                print(f"  → حدّث app.js CUR إلى {new_ver}")
     except Exception as e:
-        print(f"  ⚠ فشل تحديث sw.js: {e}")
+        print(f"  ⚠ فشل تحديث CUR: {e}")
 
     data["version"] = new_ver
     data["build"] = new_build

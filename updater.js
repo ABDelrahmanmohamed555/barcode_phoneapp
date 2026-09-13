@@ -2,7 +2,7 @@
 // يعمل في المتصفح و Cordova (file://) بدون الحاجة لإعادة بناء APK
 // الفكرة: يفحص version.json من السيرفر، لو نسخة جديدة يحمل الملفات ويطبقها
 (function(){
-  const CURRENT_VERSION = "1.0.0"; // يجب أن يتطابق مع version.json
+  const CURRENT_VERSION = "3.7"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
   const STORAGE_KEY_VERSION = "ota_version";
   const STORAGE_KEY_IGNORE = "ota_ignore_version";
   const CHECK_INTERVAL_MS = 5 * 60 * 1000; // فحص كل 5 دقائق + عند كل فتح (كان ساعة)
@@ -741,6 +741,30 @@
       }catch(e){}
       return origFetch.apply(this, arguments);
     };
+  })();
+
+  // --- تنظيف تلقائي مع كل فتحة: لو OTA قديم أو تالف امسحه قبل الحقن ---
+  (function autoCleanOTA(){
+    try{
+      const ver=getStoredVersion();
+      if(ver && compareVersions(ver, CURRENT_VERSION) < 0){
+        console.log('[AUTO-CLEAN updater] OTA قديم',ver,'<',CURRENT_VERSION,'→ مسح');
+        for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')) localStorage.removeItem(k); }
+        localStorage.removeItem(STORAGE_KEY_VERSION);
+        localStorage.removeItem(STORAGE_GITHUB_SHA);
+        try{ sessionStorage.removeItem('_ota_html_boot'); }catch(e){}
+        if('caches' in window) caches.keys().then(keys=> Promise.all(keys.filter(k=>k.startsWith(CACHE_PREFIX)).map(k=> caches.delete(k)))).catch(()=>{});
+        return;
+      }
+      // بقايا بدون version
+      if(!ver){
+        let has=false; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')){ has=true; break; } }
+        if(has){
+          console.log('[AUTO-CLEAN updater] بقايا OTA بدون version → مسح');
+          for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')) localStorage.removeItem(k); }
+        }
+      }
+    }catch(e){}
   })();
 
   // شغل الحقن فوراً (قبل DOMContentLoaded)

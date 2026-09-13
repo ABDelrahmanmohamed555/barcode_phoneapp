@@ -8,14 +8,66 @@
 <link rel="icon" type="image/png" href="icon.png"/>
 <link rel="apple-touch-icon" href="icon.png"/>
 <link rel="manifest" href="manifest.json"/>
-<!-- OTA_BOOT V2 — سحابي 100% للأيقونة والاسم والستايل وحتى HTML الجذري بدون APK -->
+<!-- AUTO-CLEAN + OTA_BOOT V3 — تلقائي مع كل فتحة يمنع الشاشة السودة -->
 <script>
-// يجب أن يكون أول سكربت في <head> وقبل أي CSS/JS
+// يجب أن يكون أول سكربت في <head> وقبل أي CSS/JS — V3 يمسح تلقائياً أي تعارض
 (function(){
   try{
-    const CUR="1.0.0";
-    const ver=localStorage.getItem('ota_version');
-    const hasOTA=ver && ver!==CUR;
+    // دالة مقارنة نسخ — تعيد 1 لو a>b
+    function cmpVer(a,b){
+      const pa=String(a).split('.').map(x=>parseInt(x,10)||0);
+      const pb=String(b).split('.').map(x=>parseInt(x,10)||0);
+      const l=Math.max(pa.length,pb.length);
+      for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; }
+      return 0;
+    }
+    const CUR="3.7";
+    // --- تنظيف تلقائي عند كل فتحة: لو OTA قديم أو تالف امسحه صامت ---
+    try{
+      const ver=localStorage.getItem('ota_version');
+      if(ver){
+        // لو OTA أقدم من النسخة الأصلية → تالف/قديم → امسحه
+        if(cmpVer(ver, CUR) < 0){
+          console.log('[AUTO-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح');
+          for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')) localStorage.removeItem(k); }
+          localStorage.removeItem('ota_version');
+          localStorage.removeItem('ota_github_sha');
+          localStorage.removeItem('ota_ignore_version');
+          try{ sessionStorage.removeItem('_ota_html_boot'); }catch(e){}
+          // امسح كاش ServiceWorker القديم
+          if('caches' in window){
+            caches.keys().then(keys=> Promise.all(keys.filter(k=>k.startsWith('nahal-ota-')).map(k=> caches.delete(k)))).catch(()=>{});
+          }
+        } else {
+          // افحص سلامة الملفات الأساسية
+          const must=['ota_app.js','ota_style.css'];
+          let corrupted=false;
+          for(const k of must){
+            const v=localStorage.getItem(k);
+            if(v!==null && v.length<30) corrupted=true;
+          }
+          const idx=localStorage.getItem('ota_index.html');
+          if(idx!==null && idx.length>0 && idx.length<800) corrupted=true;
+          if(corrupted){
+            console.log('[AUTO-CLEAN] ملفات تالفة → مسح OTA');
+            for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')) localStorage.removeItem(k); }
+            localStorage.removeItem('ota_version');
+            try{ sessionStorage.removeItem('_ota_html_boot'); }catch(e){}
+          }
+        }
+      }
+      // افحص prot_products تالف
+      try{
+        const pp=localStorage.getItem('prot_products');
+        if(pp) JSON.parse(pp);
+      }catch(e){
+        console.log('[AUTO-CLEAN] prot_products تالف → مسح');
+        try{ localStorage.removeItem('prot_products'); localStorage.setItem('prot_products','[]'); }catch(_e){}
+      }
+    }catch(e){}
+    // الآن طبق OTA_BOOT فقط لو النسخة المزامنة أحدث من الأصلية
+    const ver2=localStorage.getItem('ota_version');
+    const hasOTA=ver2 && cmpVer(ver2, CUR) > 0;
     if(!hasOTA) return;
     // 1) أيقونة سحابية — غطي favicon مبكراً + احفظ للـ body لاحقاً
     try{
@@ -135,13 +187,14 @@
 <script>
 // OTA loader — V2 يدعم كل ملفات OTA بدون استثناء
 (function(){
-  // helper لحقن أو تحميل سكربت
+  // helper لحقن أو تحميل سكربت — يقارن نسخة سليمة
   function injectOrLoad(key, src, label){
     try{
       const ver=localStorage.getItem('ota_version');
-      const cur="1.0.0";
+      const cur="3.7";
+      function _cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
       const otaVal=localStorage.getItem(key);
-      if(otaVal && ver && ver!==cur){
+      if(otaVal && ver && _cmp(ver,cur)>0){
         const s=document.createElement('script');
         s.textContent=otaVal;
         s.id='ota-'+label;
@@ -159,8 +212,9 @@
   // لو style OTA لم يُحقن مبكراً (fallback)
   try{
     const ver=localStorage.getItem('ota_version');
-    const cur="1.0.0";
-    if(ver && ver!==cur){
+    const cur="3.7";
+    function _cmp2(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
+    if(ver && _cmp2(ver,cur)>0){
       const css=localStorage.getItem('ota_style.css');
       if(css && !window.__OTA_STYLE_INJECTED){
         const s=document.createElement('style');
@@ -399,13 +453,14 @@ window.addEventListener('load', ()=>{
 });
 </script>
 <script>
-// OTA loader V2 لـ app.js + أي JS سحابي إضافي
+// OTA loader V3 لـ app.js — مقارنة نسخ سليمة
 (function(){
   try{
     const ver = localStorage.getItem('ota_version');
-    const cur = "1.0.0";
+    const cur="3.7";
+    function _cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
     const otaApp = localStorage.getItem('ota_app.js');
-    if(otaApp && ver && ver !== cur){
+    if(otaApp && hasOTA){
       const old=document.querySelector('script[src="app.js"]');
       if(old) old.remove();
       const s=document.createElement('script');
@@ -467,7 +522,7 @@ window.addEventListener('load', ()=>{
 <script>
 // اعرض نسخة OTA الحالية + حدّثها عند التحميل
 try{
-  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '1.0.0';
+  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '3.7';
   const el = document.getElementById('otaVerLabel');
   if(el) el.textContent = _v;
 }catch(e){}

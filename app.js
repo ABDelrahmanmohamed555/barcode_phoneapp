@@ -736,6 +736,52 @@ window.addEventListener('orientationchange', ()=> setTimeout(applyScreenSize, 25
 if(window.visualViewport) window.visualViewport.addEventListener('resize', _debouncedApply);
 applyScreenSize();
 
+// === كاشف الشاشة السودة + أخطاء تلقائي — يصلح نفسه بدون مسح يدوي ===
+let _bootErrors=0, _lastErrorTime=0;
+window.addEventListener('error', (e)=>{
+  try{
+    _bootErrors++;
+    _lastErrorTime=Date.now();
+    // لو 3 أخطاء في أول 5 ثواني → تعارض واضح → امسح OTA تلقائياً
+    if(_bootErrors>=3 && Date.now() - performance.timing.navigationStart < 6000){
+      console.warn('[AUTO-RECOVER] أخطاء متتالية → مسح OTA');
+      autoRecoverBlackScreen('js_error');
+    }
+  }catch(_e){}
+});
+window.addEventListener('unhandledrejection', (e)=>{
+  try{ _bootErrors++; if(_bootErrors>=3) autoRecoverBlackScreen('promise_error'); }catch(_e){}
+});
+function autoRecoverBlackScreen(reason){
+  try{
+    if(sessionStorage.getItem('_auto_recovered')) return;
+    sessionStorage.setItem('_auto_recovered','1');
+    console.log('[AUTO-RECOVER] سبب:',reason);
+    // مسح OTA فقط — احتفظ بالمنتجات ليُعاد مزامنتها
+    for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')) localStorage.removeItem(k); }
+    try{ localStorage.removeItem('ota_version'); localStorage.removeItem('ota_github_sha'); }catch(e){}
+    try{ sessionStorage.removeItem('_ota_html_boot'); }catch(e){}
+    if('caches' in window){
+      caches.keys().then(keys=> Promise.all(keys.filter(k=>k.startsWith('nahal-ota-')).map(k=> caches.delete(k)))).catch(()=>{});
+    }
+    showToast('تم إصلاح التعارض تلقائياً — إعادة تحميل','info',2500);
+    setTimeout(()=> location.reload(), 900);
+  }catch(e){ console.warn('[RECOVER] fail',e); }
+}
+// كاشف شاشة سودة: لو السبلاش لم يختف بعد 7s أو phone مخفي
+setTimeout(()=>{
+  try{
+    const splash=document.getElementById('splash');
+    const phone=document.querySelector('.phone');
+    const splashStuck = splash && document.body.contains(splash) && splash.style.opacity!=='0' && getComputedStyle(splash).display!=='none';
+    const phoneHidden = phone && (phone.offsetHeight<50 || getComputedStyle(phone).display==='none');
+    const bodyBlack = document.body && getComputedStyle(document.body).backgroundColor==='rgba(0, 0, 0, 0)';
+    if((splashStuck && Date.now()-performance.timing.navigationStart>7000) || phoneHidden){
+      console.warn('[AUTO-RECOVER] شاشة سودة مكتشفة', {splashStuck, phoneHidden});
+      autoRecoverBlackScreen('black_screen');
+    }
+  }catch(e){}
+}, 7500);
 // === تنظيف خلفي تلقائي مع كل فتحة — يعمل بدون فتح clear_cache.html ===
 async function backgroundAutoClean(){
   try{
@@ -773,3 +819,28 @@ setTimeout(backgroundAutoClean, 2500);
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') setTimeout(backgroundAutoClean, 800); });
 window.addEventListener('focus', ()=> setTimeout(backgroundAutoClean, 800));
 setInterval(backgroundAutoClean, 30000);
+// مسح تلقائي ذكي مع كل فتحة — يمنع تعارض النسخ
+(function autoCleanOnBoot(){
+  try{
+    function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
+    const CUR="3.7";
+    const ver=localStorage.getItem('ota_version');
+    if(ver && cmp(ver, CUR) < 0){
+      console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
+      for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')) localStorage.removeItem(k); }
+      localStorage.removeItem('ota_version');
+      try{ sessionStorage.removeItem('_ota_html_boot'); }catch(e){}
+      sessionStorage.removeItem('_auto_recovered');
+      if('caches' in window) caches.keys().then(keys=> Promise.all(keys.filter(k=>k.startsWith('nahal-ota-')).map(k=> caches.delete(k)))).catch(()=>{});
+    }
+    // لو لا يوجد ota_version لكن يوجد ota_* بقايا → مسح
+    if(!ver){
+      let hasOta=false;
+      for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')){ hasOta=true; break; } }
+      if(hasOta){
+        console.log('[BOOT-CLEAN] بقايا OTA بدون version → مسح');
+        for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')) localStorage.removeItem(k); }
+      }
+    }
+  }catch(e){ console.warn('[BOOT-CLEAN] fail',e); }
+})();
