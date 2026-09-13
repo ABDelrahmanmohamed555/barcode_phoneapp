@@ -2,7 +2,7 @@
 // يعمل في المتصفح و Cordova (file://) بدون الحاجة لإعادة بناء APK
 // الفكرة: يفحص version.json من السيرفر، لو نسخة جديدة يحمل الملفات ويطبقها
 (function(){
-  const CURRENT_VERSION = "3.11"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
+  const CURRENT_VERSION = "3.12"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
   const STORAGE_KEY_VERSION = "ota_version";
   const STORAGE_KEY_IGNORE = "ota_ignore_version";
   const CHECK_INTERVAL_MS = 5 * 60 * 1000; // فحص كل 5 دقائق + عند كل فتح (كان ساعة)
@@ -635,6 +635,12 @@
           if(fname.endsWith('.css')){
             // لا تكرر لو تم حقنه مبكراً في index.html
             if(document.getElementById('ota-'+fname) || document.getElementById('ota-style-early')) continue;
+            // V3.12: تجاهل CSS قديم بحد 420px
+            if(val.includes('max-width:420') || val.includes('max-width: 420')){
+              console.warn('[OTA V3.12] تجاهل CSS قديم 420px', fname);
+              localStorage.removeItem(key);
+              continue;
+            }
             const st = document.createElement('style');
             st.id='ota-'+fname;
             st.textContent = val;
@@ -743,7 +749,7 @@
     };
   })();
 
-  // --- تنظيف تلقائي مع كل فتحة: لو OTA قديم أو تالف امسحه قبل الحقن ---
+  // --- تنظيف تلقائي مع كل فتحة: لو OTA قديم أو تالف امسحه قبل الحقن + 420px ---
   (function autoCleanOTA(){
     try{
       const ver=getStoredVersion();
@@ -764,6 +770,17 @@
           for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')) localStorage.removeItem(k); }
         }
       }
+      // V3.12: لو ota_style.css قديم بحد 420px → مسح
+      try{
+        const css=localStorage.getItem('ota_style.css');
+        if(css && (css.includes('max-width:420') || css.includes('max-width: 420'))){
+          console.warn('[AUTO-CLEAN updater V3.12] OTA style 420px → مسح');
+          localStorage.removeItem('ota_style.css');
+          const el1=document.getElementById('ota-style-early');
+          if(el1) el1.remove();
+          if('caches' in window) caches.keys().then(keys=> Promise.all(keys.filter(k=>k.startsWith(CACHE_PREFIX)).map(k=> caches.delete(k)))).catch(()=>{});
+        }
+      }catch(e){}
     }catch(e){}
   })();
 

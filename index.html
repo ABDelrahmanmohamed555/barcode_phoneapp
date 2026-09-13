@@ -3,7 +3,10 @@
   
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"/>
+<meta name="theme-color" content="#0d1117"/>
+<meta name="color-scheme" content="dark"/>
+<meta name="supported-color-schemes" content="dark"/>
 <title>elnahal technology</title>
 <link rel="icon" type="image/png" href="icon.png"/>
 <link rel="apple-touch-icon" href="icon.png"/>
@@ -21,7 +24,7 @@
       for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; }
       return 0;
     }
-    const CUR="3.11";
+    const CUR="3.12";
     // --- تنظيف تلقائي عند كل فتحة: لو OTA قديم أو تالف امسحه صامت ---
     try{
       const ver=localStorage.getItem('ota_version');
@@ -64,6 +67,20 @@
         console.log('[AUTO-CLEAN] prot_products تالف → مسح');
         try{ localStorage.removeItem('prot_products'); localStorage.setItem('prot_products','[]'); }catch(_e){}
       }
+      // فحص جذري V3.12: لو ota_style.css يحتوي 420px (محاكاة قديمة) → امسحه فوراً
+      try{
+        const oldCss=localStorage.getItem('ota_style.css');
+        if(oldCss && (oldCss.includes('max-width:420') || oldCss.includes('max-width: 420'))){
+          console.warn('[AUTO-CLEAN V3.12] OTA style قديم بحد 420px → مسح');
+          localStorage.removeItem('ota_style.css');
+          // احذف أي ستايل محقون قديم لاحقاً
+          const el1=document.getElementById('ota-style-early');
+          if(el1) el1.remove();
+          if('caches' in window){
+            caches.keys().then(keys=> Promise.all(keys.filter(k=>k.startsWith('nahal-ota-')).map(k=> caches.delete(k)))).catch(()=>{});
+          }
+        }
+      }catch(e){}
     }catch(e){}
     // الآن طبق OTA_BOOT فقط لو النسخة المزامنة أحدث من الأصلية
     const ver2=localStorage.getItem('ota_version');
@@ -124,15 +141,21 @@
         }
       }
     }catch(e){}
-    // 3) ستايل سحابي مبكر — احقن قبل تحميل style.css الأصلي
+    // 3) ستايل سحابي مبكر — احقن قبل تحميل style.css الأصلي (مع حماية 420px)
     try{
       const css=localStorage.getItem('ota_style.css');
       if(css && css.length>20){
-        const s=document.createElement('style');
-        s.id='ota-style-early';
-        s.textContent=css;
-        document.head.appendChild(s);
-        window.__OTA_STYLE_INJECTED=true;
+        // حماية V3.12: لا تحقن ستايل قديم يحتوي 420px
+        if(css.includes('max-width:420') || css.includes('max-width: 420')){
+          console.warn('[OTA_BOOT V3.12] تجاهل OTA style قديم 420px');
+          localStorage.removeItem('ota_style.css');
+        } else {
+          const s=document.createElement('style');
+          s.id='ota-style-early';
+          s.textContent=css;
+          document.head.appendChild(s);
+          window.__OTA_STYLE_INJECTED=true;
+        }
       }
     }catch(e){}
     // 4) HTML جذري سحابي — معطل مؤقتاً لمنع الشاشة السودة (يُفعّل لاحقاً بعد اختبار)
@@ -186,7 +209,7 @@
   function injectOrLoad(key, src, label){
     try{
       const ver=localStorage.getItem('ota_version');
-      const cur="3.11";
+      const cur="3.12";
       function _cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
       const otaVal=localStorage.getItem(key);
       if(otaVal && ver && _cmp(ver,cur)>0){
@@ -207,7 +230,7 @@
   // لو style OTA لم يُحقن مبكراً (fallback)
   try{
     const ver=localStorage.getItem('ota_version');
-    const cur="3.11";
+    const cur="3.12";
     function _cmp2(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
     if(ver && _cmp2(ver,cur)>0){
       const css=localStorage.getItem('ota_style.css');
@@ -452,7 +475,7 @@ window.addEventListener('load', ()=>{
 (function(){
   try{
     const ver = localStorage.getItem('ota_version');
-    const cur="3.11";
+    const cur="3.12";
     function _cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
     const otaApp = localStorage.getItem('ota_app.js');
     if(otaApp && hasOTA){
@@ -517,7 +540,7 @@ window.addEventListener('load', ()=>{
 <script>
 // اعرض نسخة OTA الحالية + حدّثها عند التحميل
 try{
-  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '3.11';
+  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '3.12';
   const el = document.getElementById('otaVerLabel');
   if(el) el.textContent = _v;
 }catch(e){}

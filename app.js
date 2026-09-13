@@ -726,37 +726,136 @@ initSupabaseRealtime();
 setInterval(()=>{ syncFromApi(); }, 8000);
 setInterval(()=>{ if(window.SupabaseSync && window.SupabaseSync.isConfigured() && !_supaRealtimeActive) initSupabaseRealtime(); }, 8000);
 
-// حل جذري: التطبيق يملأ الشاشة فعلياً — يكتشف الدقة ويطبقها بدون JS معقد
-let _lastW=0,_lastH=0,_screenTimer=null;
+// ===== حل جذري V3.12: اكتشاف حجم الشاشة الحقيقي وملء متجاوب لكل جهاز =====
+// يكتشف العرض/الطول/DPR/الاتجاه ويضيف فئات CSS ويحدّث متغيرات --screen-*
+let _lastW=0,_lastH=0,_screenTimer=null,_lastOri='';
 function applyScreenSize(){
-  const vv = window.visualViewport;
-  const w = Math.round(vv ? vv.width : window.innerWidth);
-  const h = Math.round(vv ? vv.height : window.innerHeight);
-  const sw = Math.round(window.screen ? window.screen.width : w);
-  const sh = Math.round(window.screen ? window.screen.height : h);
-  const dpr = window.devicePixelRatio || 1;
-  if(!w || !h || w<50 || h<50) return;
-  if(w===_lastW && h===_lastH) return;
-  _lastW=w; _lastH=h;
-  // فقط حدث متغيرات CSS — التخطيط أصبح pure CSS يملأ الشاشة تلقائياً
-  document.documentElement.style.setProperty('--screen-w', w+'px');
-  document.documentElement.style.setProperty('--screen-h', h+'px');
-  document.documentElement.style.setProperty('--screen-sw', sw+'px');
-  document.documentElement.style.setProperty('--screen-sh', sh+'px');
-  document.documentElement.style.setProperty('--screen-dpr', dpr);
-  document.documentElement.style.setProperty('--screen-orientation', w>h ? 'landscape' : 'portrait');
-  // لا نلمس .phone بالـ JS — الـ CSS الآن يملأ 100vw/100dvh تلقائياً
-  console.log(`[SCREEN] ${w}x${h} (screen ${sw}x${sh} @${dpr}x) → CSS fills`);
+  try{
+    const vv = window.visualViewport;
+    const w = Math.round(vv ? vv.width : window.innerWidth);
+    const h = Math.round(vv ? vv.height : window.innerHeight);
+    const sw = Math.round(window.screen ? window.screen.width : w);
+    const sh = Math.round(window.screen ? window.screen.height : h);
+    const dpr = window.devicePixelRatio || 1;
+    const availW = Math.round(window.screen ? (window.screen.availWidth || sw) : w);
+    const availH = Math.round(window.screen ? (window.screen.availHeight || sh) : h);
+    if(!w || !h || w<50 || h<50) return;
+    const isLandscape = w > h;
+    const ori = isLandscape ? 'landscape' : 'portrait';
+    const isSameSize = (w===_lastW && h===_lastH && ori===_lastOri);
+    if(isSameSize) return;
+    _lastW=w; _lastH=h; _lastOri=ori;
+    const docEl=document.documentElement;
+    docEl.style.setProperty('--screen-w', w+'px');
+    docEl.style.setProperty('--screen-h', h+'px');
+    docEl.style.setProperty('--screen-sw', sw+'px');
+    docEl.style.setProperty('--screen-sh', sh+'px');
+    docEl.style.setProperty('--screen-aw', availW+'px');
+    docEl.style.setProperty('--screen-ah', availH+'px');
+    docEl.style.setProperty('--screen-dpr', dpr);
+    docEl.style.setProperty('--screen-orientation', ori);
+    // فئات متجاوبة للـ CSS و JS
+    const body=document.body;
+    if(body){
+      body.classList.remove('screen-xs','screen-sm','screen-md','screen-lg','screen-xl','orient-portrait','orient-landscape','is-mobile','is-tablet','is-desktop');
+      let sizeCls='screen-xs';
+      if(w>=1600) sizeCls='screen-xl';
+      else if(w>=1200) sizeCls='screen-lg';
+      else if(w>=900) sizeCls='screen-md';
+      else if(w>=600) sizeCls='screen-sm';
+      body.classList.add(sizeCls);
+      body.classList.add(ori==='landscape' ? 'orient-landscape' : 'orient-portrait');
+      if(w>=900) body.classList.add('is-desktop');
+      else if(w>=600) body.classList.add('is-tablet');
+      else body.classList.add('is-mobile');
+      body.dataset.screenW=w;
+      body.dataset.screenH=h;
+      body.dataset.orient=ori;
+    }
+    // تأكد أن .phone يملأ الشاشة فعلياً (حماية إضافية لو CSS لم يطبق)
+    try{
+      const phone=document.querySelector('.phone');
+      if(phone){
+        phone.style.width='100%';
+        phone.style.maxWidth='none';
+        // استخدم 100dvh لو مدعوم وإلا 100vh
+        if(CSS && CSS.supports && CSS.supports('height','100dvh')){
+          phone.style.height='100dvh';
+          phone.style.minHeight='100dvh';
+        } else {
+          phone.style.height='100vh';
+          phone.style.minHeight='100vh';
+        }
+      }
+    }catch(e){}
+    console.log(`[SCREEN V3.12] ${w}x${h} ${ori} DPR ${dpr} (screen ${sw}x${sh} avail ${availW}x${availH}) → ${body?body.className:''}`);
+  }catch(e){ console.warn('[SCREEN] fail',e); }
 }
 function _debouncedApply(){
   if(_screenTimer) clearTimeout(_screenTimer);
-  _screenTimer=setTimeout(applyScreenSize, 120);
+  _screenTimer=setTimeout(applyScreenSize, 80);
 }
+// مراقبة تغيير الحجم بكل الطرق
 window.addEventListener('load', applyScreenSize);
 window.addEventListener('resize', _debouncedApply);
-window.addEventListener('orientationchange', ()=> setTimeout(applyScreenSize, 250));
-if(window.visualViewport) window.visualViewport.addEventListener('resize', _debouncedApply);
+window.addEventListener('orientationchange', ()=> setTimeout(applyScreenSize, 200));
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', _debouncedApply);
+  window.visualViewport.addEventListener('scroll', _debouncedApply);
+}
+// MediaQuery للاتجاه
+try{
+  const mqlPortrait=window.matchMedia('(orientation: portrait)');
+  const mqlLandscape=window.matchMedia('(orientation: landscape)');
+  if(mqlPortrait.addEventListener) mqlPortrait.addEventListener('change', _debouncedApply);
+  else if(mqlPortrait.addListener) mqlPortrait.addListener(_debouncedApply);
+  if(mqlLandscape.addEventListener) mqlLandscape.addEventListener('change', _debouncedApply);
+} catch(e){}
+// ResizeObserver على .phone و documentElement
+try{
+  if(window.ResizeObserver){
+    const ro=new ResizeObserver(_debouncedApply);
+    ro.observe(document.documentElement);
+    const phone=document.querySelector('.phone');
+    if(phone) ro.observe(phone);
+    // راقب أيضاً body
+    if(document.body) ro.observe(document.body);
+  }
+} catch(e){}
 applyScreenSize();
+// إعادة تطبيق عند العودة للواجهة (مهم للتابلت عند تدوير)
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') setTimeout(applyScreenSize, 150); });
+window.addEventListener('pageshow', applyScreenSize);
+window.addEventListener('focus', _debouncedApply);
+// فحص دوري قصير للتأكد من ثبات الحجم (يعالج تأخر visualViewport على بعض الأجهزة)
+let _screenChecks=0;
+const _screenInterval=setInterval(()=>{
+  applyScreenSize();
+  _screenChecks++;
+  if(_screenChecks>10) clearInterval(_screenInterval);
+}, 600);
+
+// تنظيف OTA قديم يحتوي 420px (بقايا محاكاة الموبايل)
+(function purgeOldOTACSS(){
+  try{
+    const css=localStorage.getItem('ota_style.css');
+    if(css && (css.includes('max-width:420') || css.includes('max-width: 420'))){
+      console.warn('[SCREEN] اكتشاف OTA قديم بحد 420px → مسح فوري');
+      localStorage.removeItem('ota_style.css');
+      // احذف أيضاً كاش SW القديم
+      if('caches' in window){
+        caches.keys().then(keys=> Promise.all(keys.filter(k=>k.startsWith('nahal-ota-')).map(k=> caches.delete(k)))).catch(()=>{});
+      }
+      // أزل أي ستايل محقون قديم
+      const old=document.getElementById('ota-style-early');
+      if(old) old.remove();
+      const old2=document.getElementById('ota-style-fallback');
+      if(old2) old2.remove();
+      // أعد تحميل CSS الحالي
+      setTimeout(()=> applyScreenSize(), 200);
+    }
+  }catch(e){}
+})();
 
 // === كاشف الشاشة السودة + أخطاء تلقائي — يصلح نفسه بدون مسح يدوي ===
 let _bootErrors=0, _lastErrorTime=0;
@@ -841,11 +940,11 @@ setTimeout(backgroundAutoClean, 2500);
 document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') setTimeout(backgroundAutoClean, 800); });
 window.addEventListener('focus', ()=> setTimeout(backgroundAutoClean, 800));
 setInterval(backgroundAutoClean, 30000);
-// مسح تلقائي ذكي مع كل فتحة — يمنع تعارض النسخ
+// مسح تلقائي ذكي مع كل فتحة — يمنع تعارض النسخ + 420px
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="3.11";
+    const CUR="3.12";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
@@ -864,5 +963,18 @@ setInterval(backgroundAutoClean, 30000);
         for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')) localStorage.removeItem(k); }
       }
     }
+    // فحص إضافي: لو ota_style.css لا يزال يحتوي 420px → مسح فوري (حل جذري V3.12)
+    try{
+      const css=localStorage.getItem('ota_style.css');
+      if(css && (css.includes('max-width:420') || css.includes('max-width: 420'))){
+        console.warn('[BOOT-CLEAN] OTA style يحتوي 420px → مسح');
+        localStorage.removeItem('ota_style.css');
+        const el1=document.getElementById('ota-style-early');
+        if(el1) el1.remove();
+        const el2=document.getElementById('ota-style-fallback');
+        if(el2) el2.remove();
+        if('caches' in window) caches.keys().then(keys=> Promise.all(keys.filter(k=>k.startsWith('nahal-ota-')).map(k=> caches.delete(k)))).catch(()=>{});
+      }
+    }catch(e){}
   }catch(e){ console.warn('[BOOT-CLEAN] fail',e); }
 })();

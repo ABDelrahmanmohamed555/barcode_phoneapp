@@ -1,4 +1,4 @@
-/* phone app/style.css — مطابق لـ prot/config.py ثيم #0d1117 + #c8943a */
+/* phone app/style.css — V3.12 حل جذري متجاوب يملأ كل شاشة تلقائياً */
 :root{
   --bg-dark:#0d1117;
   --bg-card:#151b23;
@@ -14,30 +14,84 @@
   --info:#3a86c8;
   --border:#2d3543;
   --border-light:#3d4758;
+  --safe-top:env(safe-area-inset-top, 0px);
+  --safe-bottom:env(safe-area-inset-bottom, 0px);
+  --safe-left:env(safe-area-inset-left, 0px);
+  --safe-right:env(safe-area-inset-right, 0px);
+  --screen-w:100vw;
+  --screen-h:100dvh;
+  --screen-orientation:portrait;
 }
 *{box-sizing:border-box;font-family:'Cairo',system-ui, sans-serif}
-html{height:100%;overflow:hidden}
-body{margin:0;background:var(--bg-dark);color:var(--text-white);direction:rtl;height:100%;overflow:hidden}
-/* اخفاء سكرول بار عام (للبرمجة أسهل) */
+html{
+  height:100%;
+  width:100%;
+  overflow:hidden;
+  font-size:clamp(13px, 0.85vw + 0.5vh, 16px);
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
+}
+body{
+  margin:0;
+  background:var(--bg-dark);
+  color:var(--text-white);
+  direction:rtl;
+  height:100%;
+  width:100%;
+  min-height:100vh;
+  min-height:100dvh;
+  min-height:-webkit-fill-available;
+  overflow:hidden;
+  padding:var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+/* اخفاء سكرول بار عام */
 *::-webkit-scrollbar{display:none}
 *{scrollbar-width:none;-ms-overflow-style:none}
-/* === حل جذري: إلغاء محاكاة الموبايل — التطبيق يملأ الشاشة فعلياً === */
-html, body{height:100%;width:100%;overflow:hidden}
-.phone{width:100vw;width:100dvw;height:100vh;height:100dvh;max-width:none;margin:0;background:var(--bg-dark);border:none;display:flex;flex-direction:column;overflow:hidden}
-:root{--screen-w:100vw;--screen-h:100dvh;--screen-orientation:portrait}
-/* كل المحتوى يملأ العرض — بدون تحديد 420px */
+
+/* ===== حل جذري: التطبيق يملأ الشاشة فعلياً 100% على أي جهاز ===== */
+html, body{
+  height:100%;
+  width:100%;
+  overflow:hidden;
+}
+.phone{
+  width:100%;
+  width:100vw;
+  width:100dvw;
+  height:100vh;
+  height:100dvh;
+  height:-webkit-fill-available;
+  min-height:100vh;
+  min-height:100dvh;
+  min-height:-webkit-fill-available;
+  max-width:none;
+  max-height:none;
+  margin:0;
+  background:var(--bg-dark);
+  border:none;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  position:relative;
+}
+/* كل الأقسام تملأ العرض — بدون أي تقييد قديم */
 .phone > .titlebar,
 .phone > .toolbar,
 .phone > .sync-bar,
 .phone > .view,
-.phone > .tabs{width:100%;max-width:none;margin:0;align-self:stretch}
-.phone > .view .card{max-width:none;margin:12px;width:auto;flex:1}
+.phone > .tabs{
+  width:100%;
+  max-width:none;
+  margin:0;
+  align-self:stretch;
+}
+.phone > .view .card{max-width:none;margin:clamp(8px,1.2vw,20px);width:auto;flex:1}
 #viewUser .card{margin:0;border-radius:0}
 .phone > .view{padding:0}
-/* جداول تستخدم المساحة كاملة — بدون ضغط */
 .list-header span{flex:1}
 .row-item span{flex:1}
-.pricing-card{margin:8px 12px}
+.pricing-card{margin:8px clamp(8px,1.2vw,16px)}
+
 .titlebar{height:48px;background:var(--bg-card);display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:2px solid var(--accent);position:sticky;top:0;z-index:10}
 .titlebar .logo{width:32px;height:32px;background:var(--accent);border-radius:6px;display:grid;place-items:center;font-weight:900;color:#000}
 .toolbar{height:44px;background:var(--bg-card);display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:13px;color:var(--text-light);border-bottom:1px solid var(--border)}
@@ -89,7 +143,6 @@ html, body{height:100%;width:100%;overflow:hidden}
 .tabs button{flex:0 0 auto;min-width:120px;height:36px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-light);white-space:nowrap}
 .tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .badge{font-size:11px;background:var(--bg-input);border:1px solid var(--border);padding:2px 6px;border-radius:4px;color:var(--text-light)}
-/* انيميشن انتقال بين الأقسام + حجم واحد يملأ الشاشة */
 .view{display:none;opacity:0;transform:translateY(8px) scale(0.98);flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none}
 .view::-webkit-scrollbar{display:none}
 .view.active{display:flex;flex-direction:column;flex:1;min-height:0;animation:viewIn 280ms cubic-bezier(0.22,1,0.36,1) forwards}
@@ -98,7 +151,7 @@ html, body{height:100%;width:100%;overflow:hidden}
 .row-item{animation:rowIn 300ms ease backwards}
 @keyframes rowIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
-/* ===== Toast System — بديل alert() ===== */
+/* ===== Toast System ===== */
 #toastContainer{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:min(92vw,380px);align-items:center}
 .toast{pointer-events:auto;min-width:260px;max-width:100%;padding:12px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(8px);animation:toastIn 320ms cubic-bezier(0.22,1,0.36,1) forwards;direction:rtl;line-height:1.4;word-break:break-word}
 .toast.toast-out{animation:toastOut 280ms ease forwards}
@@ -110,7 +163,7 @@ html, body{height:100%;width:100%;overflow:hidden}
 @keyframes toastIn{from{opacity:0;transform:translateY(-14px) scale(0.96)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes toastOut{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(-10px) scale(0.96)}}
 
-/* ===== مؤشر المزامنة الجديد ===== */
+/* ===== مؤشر المزامنة ===== */
 .sync-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;font-size:11px;background:#151b23;border-bottom:1px solid #2d3543;gap:8px;flex-wrap:wrap}
 .sync-indicator{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .sync-dot{width:8px;height:8px;border-radius:50%;background:#6c7a91;flex-shrink:0;transition:background 300ms, box-shadow 300ms}
@@ -124,7 +177,7 @@ html, body{height:100%;width:100%;overflow:hidden}
 .sync-actions button:active{transform:scale(0.94)}
 .sync-meta{font-size:10px;color:#6c7a91;white-space:nowrap}
 
-/* ===== قائمة التسعير — انبثاق سحابي ===== */
+/* ===== قائمة التسعير ===== */
 .pricing-card{margin:6px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color 220ms, box-shadow 220ms, transform 220ms}
 .pricing-card:active{transform:scale(0.99)}
 .pricing-card.expanded{border-color:var(--accent);box-shadow:0 6px 18px rgba(200,148,58,0.12)}
@@ -149,3 +202,116 @@ html, body{height:100%;width:100%;overflow:hidden}
 .pricing-actions .btn{flex:1;height:38px;font-size:13px}
 .pricing-card.closing .pricing-expand{grid-template-rows:0fr;opacity:0;transition:grid-template-rows 280ms ease, opacity 200ms ease}
 .pricing-card.closing .edit-icon{opacity:0;transform:scale(0.7) rotate(-10deg);transition:opacity 160ms, transform 160ms}
+
+/* ============================================================
+   حل جذري متجاوب: تابلت و لابتوب و ديسكتوب — يملأ الشاشة بذكاء
+   ============================================================ */
+
+/* تابلت صغير و لابتوب مصغر: 600px+ */
+@media (min-width: 600px){
+  .titlebar{height:52px;padding:0 18px}
+  .titlebar .logo{width:36px;height:36px}
+  .toolbar{height:48px;padding:0 16px;font-size:14px}
+  .sync-bar{padding:8px 16px;font-size:12px}
+  .card{border-radius:12px}
+  .card-header{height:52px;font-size:15px}
+  .card-body{padding:18px}
+  .input{height:44px;font-size:14px}
+  .btn{height:44px}
+  .search-row{padding:12px;gap:8px}
+  .search-row .input{height:38px}
+  .list-header{padding:10px 8px;font-size:13px}
+  .row-item{margin:5px 12px;padding:8px;font-size:14px;border-radius:8px}
+  .pricing-card{margin:7px 14px}
+  .tabs{padding:12px 16px}
+  .tabs button{height:40px;min-width:130px;font-size:14px}
+}
+
+/* تابلت كبير / لابتوب 900px+ — توزيع أعرض وأكثر راحة */
+@media (min-width: 900px){
+  html{font-size:clamp(14px, 0.75vw + 0.5vh, 17px)}
+  .phone > .view .card{margin:16px 20px}
+  #viewUser .card{margin:0}
+  .card-body{padding:22px 24px}
+  .label{font-size:13px}
+  .input{height:46px}
+  .row{ gap:12px }
+  /* نموذج إضافة منتج يصبح شبكي أوسع */
+  #viewAdmin .card{max-width:760px;margin:16px auto;width:100%}
+  #viewAdmin .card-body{padding:20px 24px}
+  .list-header{padding:12px 10px;font-size:13px}
+  .list-header span.w-num{flex:0 0 56px}
+  .row-item{margin:6px 14px;padding:10px 8px;font-size:14px}
+  .row-item span.w-num{flex:0 0 56px}
+  .pricing-card{margin:8px 16px}
+  .pricing-row{padding:12px 12px}
+  .pricing-row span{font-size:14px}
+  .tabs{justify-content:center}
+  .tabs button{min-width:160px;height:42px}
+}
+
+/* ديسكتوب كبير 1200px+ — استغلال كامل مع توسيط ذكي */
+@media (min-width: 1200px){
+  .phone > .view .card{margin:18px 24px}
+  #viewUser .card{margin:0}
+  #viewUser .search-row{max-width:1100px;margin:0 auto;width:100%}
+  #viewUser .list-header{max-width:1100px;margin:0 auto;width:100%}
+  #userTableBody{max-width:1100px;margin:0 auto;width:100%}
+  #viewAdmin .card{max-width:800px}
+  #viewPricing .card{max-width:1000px;margin:16px auto;width:100%}
+  .list-header{font-size:14px}
+  .row-item{font-size:14px;padding:12px 10px}
+  .titlebar{height:56px}
+  .toolbar{height:50px}
+}
+
+/* شاشات عريضة جداً 1600px+ */
+@media (min-width: 1600px){
+  html{font-size:17px}
+  #viewUser .search-row, #viewUser .list-header, #userTableBody{max-width:1300px}
+  #viewPricing .card{max-width:1200px}
+  #viewAdmin .card{max-width:900px}
+}
+
+/* الوضع الأفقي — تابلت/لابتوب landscape */
+@media (orientation: landscape) and (min-width: 768px){
+  .phone{flex-direction:column}
+  .titlebar{height:50px}
+  .toolbar{height:42px}
+  .view{overflow-y:auto}
+  /* في الأفقي على تابلت، اجعل قائمة المنتجات أكثر كثافة */
+  .row-item{padding:8px 10px}
+}
+
+/* هواتف في وضع أفقي قصير الارتفاع */
+@media (orientation: landscape) and (max-height: 500px){
+  .titlebar{height:40px;padding:0 12px}
+  .toolbar{height:36px}
+  .sync-bar{padding:4px 10px}
+  .card-header{height:40px}
+  .tabs{padding:6px 10px}
+  .tabs button{height:32px;min-width:110px}
+}
+
+/* تحسينات للشاشات عالية الدقة */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi){
+  .card{border-width:0.5px}
+  .titlebar{border-bottom-width:1.5px}
+}
+
+/* دعم Window Controls Overlay على الديسكتوب PWA */
+@media (display-mode: window-controls-overlay){
+  .titlebar{padding-inline-start:calc(14px + env(titlebar-area-x, 0px)); -webkit-app-region:drag}
+}
+
+/* منع تحديد نص مزعج على الأزرار مع إبقاء التحديد في الحقول */
+.tabs button, .titlebar, .toolbar, .sync-bar, .list-header{-webkit-user-select:none;user-select:none}
+.input, .card-body{user-select:text}
+
+/* تحسين سكرول ناعم على الديسكتوب */
+@media (pointer: fine){
+  *::-webkit-scrollbar{display:block;width:6px;height:6px}
+  *::-webkit-scrollbar-thumb{background:#2d3543;border-radius:3px}
+  *::-webkit-scrollbar-track{background:transparent}
+  *{scrollbar-width:thin;scrollbar-color:#2d3543 transparent}
+}
