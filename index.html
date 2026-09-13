@@ -8,6 +8,111 @@
 <link rel="icon" type="image/png" href="icon.png"/>
 <link rel="apple-touch-icon" href="icon.png"/>
 <link rel="manifest" href="manifest.json"/>
+<!-- OTA_BOOT V2 — سحابي 100% للأيقونة والاسم والستايل وحتى HTML الجذري بدون APK -->
+<script>
+// يجب أن يكون أول سكربت في <head> وقبل أي CSS/JS
+(function(){
+  try{
+    const CUR="1.0.0";
+    const ver=localStorage.getItem('ota_version');
+    const hasOTA=ver && ver!==CUR;
+    if(!hasOTA) return;
+    // 1) أيقونة سحابية — غطي favicon مبكراً + احفظ للـ body لاحقاً
+    try{
+      const iconB64=localStorage.getItem('ota_icon.png');
+      if(iconB64 && iconB64.startsWith('data:')){
+        window.__OTA_ICON_B64=iconB64;
+        const setFavicon=(href)=>{
+          let l=document.querySelector('link[rel="icon"]');
+          if(l) l.href=href; else { l=document.createElement('link'); l.rel='icon'; l.type='image/png'; l.href=href; document.head.appendChild(l); }
+          let al=document.querySelector('link[rel="apple-touch-icon"]');
+          if(al) al.href=href;
+        };
+        setFavicon(iconB64);
+        // أيضاً راقب DOM لاستبدال أي <img src="icon.png"> بمجرد ظهوره (Splash + Titlebar)
+        const patchImgs=()=>{
+          try{
+            const imgs=document.querySelectorAll('img[src="icon.png"]');
+            imgs.forEach(img=>{ if(img.src!==iconB64) img.src=iconB64; });
+          }catch(e){}
+        };
+        if(document.readyState==='loading'){
+          document.addEventListener('DOMContentLoaded', patchImgs);
+          // MutationObserver لأي صورة تضاف لاحقاً
+          const mo=new MutationObserver(patchImgs);
+          mo.observe(document.documentElement,{childList:true,subtree:true});
+          setTimeout(()=>mo.disconnect(), 12000);
+        }
+      }
+    }catch(e){}
+    // 2) اسم التطبيق سحابي — من ota_manifest.json
+    try{
+      const manTxt=localStorage.getItem('ota_manifest.json');
+      if(manTxt){
+        const m=JSON.parse(manTxt);
+        if(m.name){
+          document.title=m.name;
+          window.__OTA_APP_NAME=m.name;
+          // سيتم تحديث #mainTitle بعد تحميل DOM
+          const updTitle=()=>{
+            const el=document.getElementById('mainTitle');
+            if(el && m.name) el.textContent=m.name;
+            // أيضاً حدّث manifest ديناميكياً (للـ PWA)
+            let ml=document.querySelector('link[rel="manifest"]');
+            if(ml){
+              try{
+                const blob=new Blob([manTxt],{type:'application/json'});
+                const url=URL.createObjectURL(blob);
+                ml.href=url;
+              }catch(e){}
+            }
+          };
+          if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', updTitle);
+          else setTimeout(updTitle,0);
+        }
+      }
+    }catch(e){}
+    // 3) ستايل سحابي مبكر — احقن قبل تحميل style.css الأصلي
+    try{
+      const css=localStorage.getItem('ota_style.css');
+      if(css && css.length>20){
+        const s=document.createElement('style');
+        s.id='ota-style-early';
+        s.textContent=css;
+        document.head.appendChild(s);
+        window.__OTA_STYLE_INJECTED=true;
+      }
+    }catch(e){}
+    // 4) HTML جذري سحابي — لو index.html تغيّر جذرياً (مثلاً هيكل جديد) استبدل الصفحة بالكامل
+    // يعمل فقط لو ota_index.html محفوظ وكبير ويحتوي على هيكل التطبيق
+    try{
+      const html=localStorage.getItem('ota_index.html');
+      if(html && html.length>800 && html.includes('class="phone"') && html.includes('updater.js')){
+        // تجنّب حلقة لا نهائية: استخدم sessionStorage كـ flag لمرة واحدة
+        const flag=sessionStorage.getItem('_ota_html_boot');
+        // قارن hash سريع لتحديد هل HTML مختلف حقاً عن الحالي
+        const curHash=(document.documentElement.outerHTML||'').length;
+        const otaHash=html.length;
+        const shouldReplace = !flag && Math.abs(otaHash-curHash)>200;
+        if(shouldReplace){
+          sessionStorage.setItem('_ota_html_boot','1');
+          // استبدال كامل — document.write يعيد كتابة الصفحة بـ OTA HTML
+          document.open();
+          document.write(html);
+          document.close();
+          // أوقف تنفيذ بقية السكربت الأصلي — الصفحة الجديدة ستعيد تشغيل كل شيء
+          throw new Error('OTA_HTML_REPLACED');
+        }
+      }
+    }catch(e){
+      if(e.message==='OTA_HTML_REPLACED') throw e;
+    }
+  }catch(e){
+    if(e && e.message==='OTA_HTML_REPLACED') throw e;
+    console.warn('[OTA_BOOT V2]',e);
+  }
+})();
+</script>
 <link rel="stylesheet" href="style.css"/>
 <script src="updater.js"></script>
 <script>
@@ -28,23 +133,43 @@
 })();
 </script>
 <script>
-// OTA loader — جديد فقط
+// OTA loader — V2 يدعم كل ملفات OTA بدون استثناء
 (function(){
-  try{
-    const ver = localStorage.getItem('ota_version');
-    const cur = "1.0.0";
-    const otaSupa = localStorage.getItem('ota_supabase_sync.js');
-    if(otaSupa && ver && ver !== cur){
-      const s=document.createElement('script');
-      s.textContent=otaSupa;
-      document.write(s.outerHTML);
-      console.log('[OTA loader] supabase_sync.js من OTA', ver);
-    } else {
-      document.write('<script src="supabase_sync.js"><\/script>');
-    }
-  }catch(e){
-    document.write('<script src="supabase_sync.js"><\/script>');
+  // helper لحقن أو تحميل سكربت
+  function injectOrLoad(key, src, label){
+    try{
+      const ver=localStorage.getItem('ota_version');
+      const cur="1.0.0";
+      const otaVal=localStorage.getItem(key);
+      if(otaVal && ver && ver!==cur){
+        const s=document.createElement('script');
+        s.textContent=otaVal;
+        s.id='ota-'+label;
+        document.write(s.outerHTML);
+        console.log('[OTA loader] '+label+' من OTA',ver);
+        return true;
+      }
+    }catch(e){}
+    document.write('<script src="'+src+'"><\/script>');
+    return false;
   }
+  try{
+    injectOrLoad('ota_supabase_sync.js','supabase_sync.js','supabase_sync.js');
+  }catch(e){ document.write('<script src="supabase_sync.js"><\/script>'); }
+  // لو style OTA لم يُحقن مبكراً (fallback)
+  try{
+    const ver=localStorage.getItem('ota_version');
+    const cur="1.0.0";
+    if(ver && ver!==cur){
+      const css=localStorage.getItem('ota_style.css');
+      if(css && !window.__OTA_STYLE_INJECTED){
+        const s=document.createElement('style');
+        s.id='ota-style-fallback';
+        s.textContent=css;
+        document.write(s.outerHTML);
+      }
+    }
+  }catch(e){}
 })();
 </script>
 <script>if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js").catch(()=>{});}</script>
@@ -274,20 +399,35 @@ window.addEventListener('load', ()=>{
 });
 </script>
 <script>
-// OTA loader لـ app.js — يحمّل النسخة المحدثة هوائياً بدون الحاجة لـ APK
+// OTA loader V2 لـ app.js + أي JS سحابي إضافي
 (function(){
   try{
     const ver = localStorage.getItem('ota_version');
     const cur = "1.0.0";
     const otaApp = localStorage.getItem('ota_app.js');
     if(otaApp && ver && ver !== cur){
-      // احذف أي script app.js قديم لو موجود
       const old=document.querySelector('script[src="app.js"]');
       if(old) old.remove();
       const s=document.createElement('script');
       s.textContent=otaApp;
+      s.id='ota-app.js';
       document.currentScript.parentNode.insertBefore(s, document.currentScript);
       console.log('[OTA loader] app.js من OTA', ver);
+      // حقن أي JS إضافي سحابي (مثلاً ota_extra.js) لو موجود
+      for(let i=0;i<localStorage.length;i++){
+        const k=localStorage.key(i);
+        if(k && k.startsWith('ota_') && k.endsWith('.js') && k!=='ota_app.js' && k!=='ota_supabase_sync.js' && k!=='ota_updater.js' && k!=='ota_sw.js'){
+          const fname=k.slice(4);
+          const val=localStorage.getItem(k);
+          if(val && val.length>50){
+            const sc=document.createElement('script');
+            sc.textContent=val;
+            sc.id='ota-'+fname;
+            document.currentScript.parentNode.insertBefore(sc, document.currentScript);
+            console.log('[OTA loader] extra JS',fname);
+          }
+        }
+      }
     } else {
       const s=document.createElement('script');
       s.src='app.js';
@@ -298,6 +438,30 @@ window.addEventListener('load', ()=>{
     s.src='app.js';
     document.currentScript.parentNode.insertBefore(s, document.currentScript);
   }
+  // بعد تحميل app.js: طبّق أيقونة واسم سحابي متأخر (لو لم يطبق مبكراً)
+  setTimeout(()=>{
+    try{
+      const iconB64=window.__OTA_ICON_B64 || localStorage.getItem('ota_icon.png');
+      if(iconB64 && iconB64.startsWith('data:')){
+        document.querySelectorAll('img[src="icon.png"]').forEach(img=>img.src=iconB64);
+        const splashImg=document.querySelector('#splashLogo img');
+        if(splashImg) splashImg.src=iconB64;
+        const titleLogo=document.querySelector('#mainLogo img');
+        if(titleLogo) titleLogo.src=iconB64;
+      }
+      const manTxt=localStorage.getItem('ota_manifest.json');
+      if(manTxt){
+        try{
+          const m=JSON.parse(manTxt);
+          if(m.name){
+            const el=document.getElementById('mainTitle');
+            if(el) el.textContent=m.name;
+            document.title=m.name;
+          }
+        }catch(e){}
+      }
+    }catch(e){}
+  }, 400);
 })();
 </script>
 <script>

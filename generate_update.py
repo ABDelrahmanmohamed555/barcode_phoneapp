@@ -94,6 +94,23 @@ def main():
             except Exception:
                 pass
 
+    # --- OTA V2: حدّث sw.js ليحمل رقم النسخة الجديدة (حتى لا يحذف كاش OTA المستقبلي) ---
+    try:
+        sw_path = BASE / "sw.js"
+        if sw_path.exists():
+            sw_text = sw_path.read_text(encoding="utf-8")
+            import re
+            # حدّث CURRENT_CACHE + لوج
+            new_cache_line = f"let CURRENT_CACHE = CACHE_PREFIX + 'v{new_ver}';"
+            sw_text_new = re.sub(r"let CURRENT_CACHE\s*=\s*CACHE_PREFIX\s*\+\s*'v[^']*';", new_cache_line, sw_text)
+            sw_text_new = re.sub(r"\[SW [^\]]+\] install", f"[SW {new_ver}] install", sw_text_new)
+            sw_text_new = re.sub(r"\[SW [^\]]+\] activate", f"[SW {new_ver}] activate", sw_text_new)
+            if sw_text_new != sw_text:
+                sw_path.write_text(sw_text_new, encoding="utf-8")
+                print(f"  → حدّث sw.js إلى v{new_ver}")
+    except Exception as e:
+        print(f"  ⚠ فشل تحديث sw.js: {e}")
+
     data["version"] = new_ver
     data["build"] = new_build
     data["date"] = datetime.datetime.now().isoformat(timespec="seconds")

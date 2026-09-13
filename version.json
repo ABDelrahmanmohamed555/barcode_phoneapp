@@ -1,24 +1,25 @@
 {
-  "version": "3.4",
-  "build": 41,
-  "date": "2026-09-12T18:43:19",
-  "notes": "إصلاح وصول التحديثات - OTA نظيف 3.4",
+  "version": "3.5",
+  "build": 42,
+  "date": "2026-09-13T09:55:40",
+  "notes": "OTA V2 - سحابي 100% للأيقونة والاسم والـ HTML الجذري بدون APK",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "5c704e6af55ab5cc36cc29286e51c3cb3945302c815dae340ff715fea430c8cd",
+    "app.js": "2cc12fdf46d61226c16e2383e47853c2cbae06d44e8285f4588522a1f6648dd7",
     "clear_cache.html": "bd4ad6bbd26800c0179ff18fdacf55de7f24101c6b1db2cb40fd7a127e8dab6e",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
-    "index.html": "81200e996759282d31bd3144e473043167951bc50e58c5a28767606ec8b3e6e1",
+    "index.html": "3aa95a9f7bfb9be41f6d3022599ac0b09f3bddf65eef3ab9f961eb834747d275",
     "manifest.json": "f8d7763eb253611f38a9fe7f4fbb2da93da9f651d8c1daa1554ada9325dcb927",
     "products.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "style.css": "4351f20b2d0bf7c68ad02e5315373a1c08b5785f0c76f9895187bc60334c77c8",
+    "style.css": "c392ce329ce8cbc4cf9bc08366fcdc98223963456e312869a98cb301bd727664",
     "supabase_sync.js": "2f110ca8b55655449e2d9986b1ebc067893c60b36e51436349431888c695d7f9",
-    "sw.js": "ebcc91bff35bfe6211cf565ecd6059593ec76295d61df4ba56b016fd337c2cdf",
-    "updater.js": "279e82a200f48ab838584d882a1e54a314acd9a2d2feac20516cdcb4cb6b2c2c",
-    "version.json": "6592cb3c804bafa3b55581e0bbee6bad473f1950a3b70af533cd1da7a656408e"
+    "sw.js": "d0c15b5c08330473c0478e1f5b0ac5f6771c98791d17c3baf5b91fdf8346079f",
+    "updater.js": "5d84df4c82bf289fc6628d26d9f538b845207fe204589841b061419833bad302",
+    "version.json": "80217bbebc0b81c163e75482394b534f04630b3696d69cee8edd1f7916cf5277"
   },
   "changelog": [
+    "3.5 - OTA V2 - سحابي 100% للأيقونة والاسم والـ HTML الجذري بدون APK (2026-09-13)",
     "3.4 - إصلاح وصول التحديثات - OTA نظيف 3.4 (2026-09-12)",
     "3.3 - مزامنة جديدة فقط - نظيف (2026-09-12)"
   ]

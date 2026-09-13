@@ -589,53 +589,127 @@
     }
   }
 
-  // --- تحميل ملفات OTA المخزنة مبكراً (قبل تحميل app.js) — يعمل لأي ملف جديد ---
+  // --- تحميل ملفات OTA المخزنة مبكراً (قبل تحميل app.js) — V2 شامل للأيقونة والاسم والـ PWA ---
   function injectCachedIfExists(){
     try{
       const ver = getStoredVersion();
       if(compareVersions(ver, CURRENT_VERSION) <=0) return;
-      // حقن كل ملفات OTA المحفوظة
+      // 1) manifest.json سحابي — حدث الاسم والـ PWA مبكراً
+      try{
+        const manTxt=localStorage.getItem('ota_manifest.json');
+        if(manTxt){
+          const m=JSON.parse(manTxt);
+          if(m.name){
+            document.title=m.name;
+            window.__OTA_APP_NAME=m.name;
+            // حدث manifest ديناميكي
+            let ml=document.querySelector('link[rel="manifest"]');
+            if(ml){
+              try{
+                const blob=new Blob([manTxt],{type:'application/json'});
+                const u=URL.createObjectURL(blob);
+                ml.href=u;
+              }catch(e){}
+            }
+            // حدث عنوان الهيدر لاحقاً
+            const upd=()=>{
+              const el=document.getElementById('mainTitle');
+              if(el) el.textContent=m.name;
+            };
+            if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', upd);
+            else upd();
+          }
+        }
+      }catch(e){}
+      // 2) حقن كل ملفات OTA المحفوظة
       for(let i=0;i<localStorage.length;i++){
         const key = localStorage.key(i);
         if(!key || !key.startsWith('ota_')) continue;
         const fname = key.slice(4); // بعد ota_
-        if(fname==='version.json' || fname==='manifest.json') continue;
+        if(fname==='version.json') continue;
+        // manifest تمت معالجته أعلاه
+        if(fname==='manifest.json') continue;
         const val = localStorage.getItem(key);
         if(!val) continue;
         try{
           if(fname.endsWith('.css')){
+            // لا تكرر لو تم حقنه مبكراً في index.html
+            if(document.getElementById('ota-'+fname) || document.getElementById('ota-style-early')) continue;
             const st = document.createElement('style');
             st.id='ota-'+fname;
             st.textContent = val;
             document.head.appendChild(st);
             console.log('[OTA] حقن', fname, ver);
           } else if(fname.endsWith('.js')){
-            // لا نحقن updater.js أو sw.js مبكراً
             if(fname==='updater.js' || fname==='sw.js') continue;
-            // احذف الأصلي لو موجود
+            if(document.getElementById('ota-'+fname)) continue;
             const orig = document.querySelector(`script[src="${fname}"]`);
             if(orig) orig.remove();
             const s = document.createElement('script');
             s.id='ota-'+fname;
             s.textContent = val;
             if(document.readyState === 'loading'){
-              document.addEventListener('DOMContentLoaded', ()=> document.body.appendChild(s));
+              document.addEventListener('DOMContentLoaded', ()=> { try{document.body.appendChild(s);}catch(e){} });
             } else {
-              document.body.appendChild(s);
+              try{document.body.appendChild(s);}catch(e){}
             }
             console.log('[OTA] حقن', fname, ver);
           } else if(/\.(png|jpg|jpeg|gif|webp|ico)$/i.test(fname)){
-            // صورة base64
-            const imgs = document.querySelectorAll(`img[src="${fname}"]`);
-            imgs.forEach(img=> img.src = val);
-            // أيضاً أي عنصر يستخدم icon.png
-            if(fname==='icon.png'){
-              const allIcons = document.querySelectorAll('img[src="icon.png"]');
-              allIcons.forEach(img=> img.src = val);
+            // صورة base64 — استبدال فوري + مراقبة للمستقبل
+            const applyIcon=(b64)=>{
+              try{
+                document.querySelectorAll(`img[src="${fname}"]`).forEach(img=>{ if(img.src!==b64) img.src=b64; });
+                if(fname==='icon.png'){
+                  document.querySelectorAll('img[src="icon.png"]').forEach(img=>{ if(img.src!==b64) img.src=b64; });
+                  // favicon
+                  let l=document.querySelector('link[rel="icon"]');
+                  if(l) l.href=b64;
+                  let al=document.querySelector('link[rel="apple-touch-icon"]');
+                  if(al) al.href=b64;
+                  // splash و titlebar
+                  const splashImg=document.querySelector('#splashLogo img');
+                  if(splashImg) splashImg.src=b64;
+                  const titleImg=document.querySelector('#mainLogo img');
+                  if(titleImg) titleImg.src=b64;
+                  window.__OTA_ICON_B64=b64;
+                }
+              }catch(e){}
+            };
+            if(val.startsWith('data:')){
+              applyIcon(val);
+              // MutationObserver لأي صورة تضاف لاحقاً
+              const mo=new MutationObserver(()=>applyIcon(val));
+              mo.observe(document.documentElement,{childList:true,subtree:true});
+              setTimeout(()=>mo.disconnect(), 15000);
+              console.log('[OTA] حقن صورة', fname, ver);
             }
           }
         }catch(e){ console.warn('[OTA] inject fail', fname, e); }
       }
+      // 3) تأكيد نهائي بعد DOM جاهز للأيقونة والاسم
+      const finalPatch=()=>{
+        try{
+          const iconB64=localStorage.getItem('ota_icon.png');
+          if(iconB64 && iconB64.startsWith('data:')){
+            document.querySelectorAll('img[src="icon.png"]').forEach(img=>img.src=iconB64);
+            const sImg=document.querySelector('#splashLogo img'); if(sImg) sImg.src=iconB64;
+            const tImg=document.querySelector('#mainLogo img'); if(tImg) tImg.src=iconB64;
+          }
+          const manTxt=localStorage.getItem('ota_manifest.json');
+          if(manTxt){
+            try{
+              const m=JSON.parse(manTxt);
+              if(m.name){
+                const el=document.getElementById('mainTitle');
+                if(el) el.textContent=m.name;
+                document.title=m.name;
+              }
+            }catch(e){}
+          }
+        }catch(e){}
+      };
+      if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', finalPatch);
+      else setTimeout(finalPatch, 300);
     }catch(e){ console.warn('[OTA] inject fail', e); }
   }
 
