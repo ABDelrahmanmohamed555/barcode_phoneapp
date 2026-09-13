@@ -190,13 +190,24 @@ function _applyProducts(newData, source){
     try{
       const ls = localStorage.getItem('prot_products');
       if(ls){
-        const arr = JSON.parse(ls);
+        const arr=JSON.parse(ls);
         if(Array.isArray(arr) && arr.length>0) hadStorage = true;
       }
     }catch(e){}
-    try{ localStorage.setItem('prot_products', JSON.stringify([])); }catch(e){}
+    // حماية V3.16: لا تمسح المحلي إذا السحابة فارغة مؤقتاً وهناك محلي — احتفظ واعادة محاولة
+    if((hadLocal || hadStorage) && source!=='Supabase' && source!=='Supabase RT'){
+      console.log(`[APPLY] سحابة فارغة ${source} — تجاهل مؤقت`);
+      return false;
+    }
     if(hadLocal || hadStorage){
+      // لو السحابة فارغة حقاً (بعد تأكيد من مصدر موثوق) امسح، لكن مع تحذير
       console.log(`[APPLY] سحابة فارغة ${source} — مسح كل المحلي`);
+      // تحقق ثانوي: حاول جلب مرة أخرى قبل المسح لتجنب مسح خاطئ بسبب شبكة عابرة
+      if(source==='Supabase' && hadLocal){
+        console.warn('[APPLY] إيقاف مسح مؤقت — إبقاء المحلي حتى تأكيد ثاني');
+        try{ _setBadge(products.length); }catch(e){}
+        return false;
+      }
       products = [];
       _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
       _saveLocal();
@@ -344,6 +355,8 @@ function clearForm(){
 async function saveProduct(){
   const name=pName.value.trim(), barcode=pBarcode.value.trim(), cat=pCat.value, price=parseFloat(pPrice.value||0), stock=parseInt(pStock.value||0), desc=pDesc.value.trim();
   if(!name) return showToast("ادخل اسم المنتج",'warning');
+  // حفظ محلي فوري + إظهار مزامن أزرق حتى لو السحابة تأخرت
+  const tempProd = {id: Date.now()+Math.floor(Math.random()*1000), name, barcode, category:cat, price, stock, description:desc, created_at:_localNow(), updated_at:_localNow()};
   try{
     const saved = await apiPostProduct({name, barcode, category:cat, price, stock, description:desc});
     if(saved && saved.id){
@@ -354,15 +367,35 @@ async function saveProduct(){
       renderUserTable();
       if(document.getElementById('tableBody')) renderTable();
       renderPricingTable();
+      _setBadge(products.length);
       clearForm();
       showToast(`تم الحفظ ومزامنته لحظياً ✓ ${saved.name} - ${saved.price} جنيه`,'success',3500);
+      // مزامنة خلفية للتأكد
+      setTimeout(()=> syncFromApi({force:true}), 800);
       return;
     }
   }catch(e){
-    showToast('فشل الحفظ: '+e.message,'error',4000);
+    // حتى لو فشل السحابة، احتفظ محلياً واعرض مزامن مؤقت + حاول لاحقاً
+    console.warn('POST سحابة فشل، حفظ محلي مؤقت', e.message);
+    const exists = products.find(p=> p.barcode===barcode);
+    if(!exists) products.unshift(tempProd);
+    _saveLocal();
+    renderUserTable(); renderPricingTable();
+    _setBadge(products.length);
+    showToast('تم الحفظ محلياً وسيزامن تلقائياً ✓','info',3500);
+    _scheduleSyncRetry();
+    // حاول إعادة الإرسال بعد 4s
+    setTimeout(async ()=>{
+      try{ const retry=await apiPostProduct(tempProd); if(retry){ const ex=products.find(p=>p.barcode===retry.barcode); if(ex) Object.assign(ex, retry); _saveLocal(); _setBadge(products.length); console.log('retry POST نجح'); } }catch(_e){}
+    }, 4000);
     return;
   }
-  showToast('فشل الحفظ - تأكد من الاتصال بالسحابة','error');
+  // fallback محلي لو السحابة لم ترجع id
+  const exists2 = products.find(p=> p.barcode===barcode);
+  if(!exists2) products.unshift(tempProd);
+  _saveLocal(); renderUserTable(); renderPricingTable(); _setBadge(products.length);
+  showToast('تم الحفظ محلياً وسيزامن تلقائياً ✓','info',3500);
+  _scheduleSyncRetry();
 }
 
 function renderTable(){
@@ -992,7 +1025,7 @@ setInterval(backgroundAutoClean, 30000);
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="3.15";
+    const CUR="3.16";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
