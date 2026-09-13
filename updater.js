@@ -2,7 +2,7 @@
 // يعمل في المتصفح و Cordova (file://) بدون الحاجة لإعادة بناء APK
 // الفكرة: يفحص version.json من السيرفر، لو نسخة جديدة يحمل الملفات ويطبقها
 (function(){
-  const CURRENT_VERSION = "3.10"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
+  const CURRENT_VERSION = "3.11"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
   const STORAGE_KEY_VERSION = "ota_version";
   const STORAGE_KEY_IGNORE = "ota_ignore_version";
   const CHECK_INTERVAL_MS = 5 * 60 * 1000; // فحص كل 5 دقائق + عند كل فتح (كان ساعة)

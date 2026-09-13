@@ -21,7 +21,7 @@
       for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; }
       return 0;
     }
-    const CUR="3.10";
+    const CUR="3.11";
     // --- تنظيف تلقائي عند كل فتحة: لو OTA قديم أو تالف امسحه صامت ---
     try{
       const ver=localStorage.getItem('ota_version');
@@ -186,7 +186,7 @@
   function injectOrLoad(key, src, label){
     try{
       const ver=localStorage.getItem('ota_version');
-      const cur="3.10";
+      const cur="3.11";
       function _cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
       const otaVal=localStorage.getItem(key);
       if(otaVal && ver && _cmp(ver,cur)>0){
@@ -207,7 +207,7 @@
   // لو style OTA لم يُحقن مبكراً (fallback)
   try{
     const ver=localStorage.getItem('ota_version');
-    const cur="3.10";
+    const cur="3.11";
     function _cmp2(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
     if(ver && _cmp2(ver,cur)>0){
       const css=localStorage.getItem('ota_style.css');
@@ -452,7 +452,7 @@ window.addEventListener('load', ()=>{
 (function(){
   try{
     const ver = localStorage.getItem('ota_version');
-    const cur="3.10";
+    const cur="3.11";
     function _cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
     const otaApp = localStorage.getItem('ota_app.js');
     if(otaApp && hasOTA){
@@ -517,7 +517,7 @@ window.addEventListener('load', ()=>{
 <script>
 // اعرض نسخة OTA الحالية + حدّثها عند التحميل
 try{
-  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '3.10';
+  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '3.11';
   const el = document.getElementById('otaVerLabel');
   if(el) el.textContent = _v;
 }catch(e){}
