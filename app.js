@@ -726,7 +726,7 @@ initSupabaseRealtime();
 setInterval(()=>{ syncFromApi(); }, 8000);
 setInterval(()=>{ if(window.SupabaseSync && window.SupabaseSync.isConfigured() && !_supaRealtimeActive) initSupabaseRealtime(); }, 8000);
 
-// يتعرف على ريزولوشن الشاشة — يملأ الشاشة حسب الدقة والمحتوى يبقى ثابت في المنتصف
+// حل جذري: التطبيق يملأ الشاشة فعلياً — يكتشف الدقة ويطبقها بدون JS معقد
 let _lastW=0,_lastH=0,_screenTimer=null;
 function applyScreenSize(){
   const vv = window.visualViewport;
@@ -738,22 +738,15 @@ function applyScreenSize(){
   if(!w || !h || w<50 || h<50) return;
   if(w===_lastW && h===_lastH) return;
   _lastW=w; _lastH=h;
-  const phone=document.querySelector('.phone');
-  if(!phone) return;
+  // فقط حدث متغيرات CSS — التخطيط أصبح pure CSS يملأ الشاشة تلقائياً
   document.documentElement.style.setProperty('--screen-w', w+'px');
   document.documentElement.style.setProperty('--screen-h', h+'px');
   document.documentElement.style.setProperty('--screen-sw', sw+'px');
   document.documentElement.style.setProperty('--screen-sh', sh+'px');
   document.documentElement.style.setProperty('--screen-dpr', dpr);
   document.documentElement.style.setProperty('--screen-orientation', w>h ? 'landscape' : 'portrait');
-  // الحاوية الخارجية تملأ الشاشة فعلياً على كل الأجهزة
-  phone.style.width = w + 'px';
-  phone.style.height = h + 'px';
-  phone.style.maxWidth = 'none';
-  phone.style.minHeight = h + 'px';
-  phone.style.margin = '0';
-  // المحتوى الداخلي يبقى بعرض ثابت 420px في المنتصف — لا يتمدد
-  console.log(`[SCREEN] ${w}x${h} (screen ${sw}x${sh} @${dpr}x) → phone fills ${w}x${h}`);
+  // لا نلمس .phone بالـ JS — الـ CSS الآن يملأ 100vw/100dvh تلقائياً
+  console.log(`[SCREEN] ${w}x${h} (screen ${sw}x${sh} @${dpr}x) → CSS fills`);
 }
 function _debouncedApply(){
   if(_screenTimer) clearTimeout(_screenTimer);
