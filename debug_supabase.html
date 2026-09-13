@@ -1,0 +1,250 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>فحص Supabase جذري</title><style>body{font-family:sans-serif;background:#0d1117;color:#f5f0e3;padding:16px;direction:rtl}button{padding:12px 18px;background:#c8943a;color:#fff;border:none;border-radius:8px;font-weight:700;width:100%;margin:8px 0}pre{background:#151b23;border:1px solid #2d3543;border-radius:8px;padding:12px;white-space:pre-wrap;word-break:break-all;font-size:11px;max-height:70vh;overflow:auto;line-height:1.6}.ok{color:#2d8a4e}.err{color:#c73e3e}.info{color:#3a86c8}.warn{color:#c8943a}</style></head><body>
+<h2 style="color:#c8943a">🔍 فحص جذري — لماذا VS Code شغال والتطبيق لا؟</h2>
+<p style="color:#9e9e9e;font-size:11px">هذه الصفحة تكشف الفرق بين بيئة VS Code (http) و APK (file://) — السبب غالباً <b>OTA Cache قديم أو CORS file://</b></p>
+<button onclick="runTest()">▶ تشغيل الفحص الكامل</button>
+<button onclick="clearOTA()" style="background:#c73e3e">🧹 مسح OTA + SW وإعادة التحميل</button>
+<button onclick="testCors()" style="background:#3a86c8">🌐 اختبار CORS فقط (file:// vs http)</button>
+<button onclick="testFirebase()" style="background:#2d8a4e">🔥 اختبار Firebase/FCM</button>
+<button onclick="location.href='index.html'" style="background:#1c2333;border:1px solid #2d3543">← العودة</button>
+<pre id="log">اضغط "تشغيل الفحص الكامل"...</pre>
+<script src="supabase_sync.js"></script>
+<script src="fcm_manager.js"></script>
+<script>
+function log(msg, cls){
+  const el=document.getElementById('log');
+  const time=new Date().toLocaleTimeString();
+  el.innerHTML += `<span class="${cls||''}">[${time}] ${msg}</span>\n`;
+  el.scrollTop=el.scrollHeight;
+  console.log(msg);
+}
+function section(t){ log('\n━━━ '+t+' ━━━','warn'); }
+
+async function runTest(){
+  const el=document.getElementById('log');
+  el.innerHTML='';
+  log('▶ بدء الفحص الجذري — قارن هذه النتائج بين VS Code والتطبيق على الموبايل','info');
+  log('الوقت: '+new Date().toLocaleString('ar-EG'),'info');
+
+  // 0) البيئة
+  section('0) البيئة — الفرق الأساسي VS Code vs APK');
+  log('location.href: '+location.href,'info');
+  log('location.origin: '+(location.origin||'null (file://)'),'info');
+  log('protocol: '+location.protocol,'info');
+  log('userAgent: '+navigator.userAgent.slice(0,120),'info');
+  log('onLine: '+navigator.onLine,'info');
+  try{ log('connection: '+((navigator.connection&&navigator.connection.effectiveType)||'unknown'),'info'); }catch(e){}
+  if(location.protocol==='file:'){
+    log('⚠ أنت على file:// (APK/Cordova) — Origin = null → بعض سيرفرات Supabase ترفض null (CORS) بينما http://127.0.0.1 مسموح','err');
+    log('→ الحل: في Supabase Dashboard → Settings → API → CORS → أضف * أو null أو https://*','warn');
+  } else {
+    log('✓ أنت على http/https — CORS غالباً مسموح','ok');
+  }
+
+  // 1) إصدارات
+  section('1) الإصدارات — هل OTA قديم يغطي ملفات جديدة؟');
+  try{
+    let bundledVer='?', bundledBuild='?';
+    try{
+      const r=await fetch('./version.json?_t='+Date.now(),{cache:'no-store'});
+      if(r.ok){ const j=await r.json(); bundledVer=j.version||'?'; bundledBuild=j.build||'?'; }
+    }catch(e){}
+    if(bundledVer==='?'){
+      // fallback من localStorage أو الثابت
+      bundledVer='3.28'; bundledBuild='72';
+      try{ const v=localStorage.getItem('ota_version'); if(v) bundledVer+=' (OTA '+v+')'; }catch(e){}
+    }
+    const otaVer = localStorage.getItem('ota_version')||'لا يوجد';
+    const otaSha = localStorage.getItem('ota_github_sha')||'لا يوجد';
+    log('الإصدار المضمّن (bundled version.json): '+bundledVer+' build '+bundledBuild,'info');
+    log('ota_version المخزن: '+otaVer,'info');
+    log('ota_github_sha: '+otaSha.slice(0,12),'info');
+    if(otaVer && otaVer!==bundledVer){
+      log('⚠ نسخة OTA مختلفة عن المضمّنة → التطبيق قد يحمل supabase_sync.js قديم من OTA','err');
+      if(otaVer==='3.26' || otaVer==='3.25') log('→ هذا بالضبط سبب فرق VS Code (جديد) vs APK (قديم OTA 3.25/3.26) — اضغط مسح OTA','err');
+    } else if(!otaVer){
+      log('✓ لا يوجد OTA — التطبيق يحمل الملفات الأصلية (مطابق لـ VS Code)','ok');
+    } else {
+      log('✓ OTA مطابق للمضمّن','ok');
+    }
+    // عدد ملفات OTA
+    let c=0, list=[];
+    for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')){ c++; list.push(k); } }
+    log('عدد ملفات OTA: '+c,'info');
+    if(list.length) log('  '+list.join(', ').slice(0,250),'info');
+    // هاش supabase_sync
+    try{
+      const otaSupa = localStorage.getItem('ota_supabase_sync.js');
+      if(otaSupa) log('ota_supabase_sync.js موجود: '+otaSupa.length+' حرف — قد يكون قديم','warn');
+      else log('ota_supabase_sync.js غير موجود (يستخدم الأصلي)','ok');
+    }catch(e){}
+  }catch(e){ log('version check fail '+e.message,'err'); }
+
+  // 2) Supabase config
+  section('2) إعدادات Supabase');
+  try{
+    const cfg=SupabaseSync.getConfig();
+    log('URL: '+cfg.url,'info');
+    log('Key (20): '+cfg.key.slice(0,20)+'...','info');
+    log('isConfigured: '+SupabaseSync.isConfigured(),'info');
+    // هل المفتاح service_role؟
+    try{
+      const payload = JSON.parse(atob(cfg.key.split('.')[1]));
+      log('role في JWT: '+payload.role,'info');
+      if(payload.role==='service_role') log('⚠ تستخدم service_role — يسمح بالكل لكن يظهر في الكود (آمن للاختبار فقط)','warn');
+      log('exp: '+new Date(payload.exp*1000).toLocaleString(),'info');
+    }catch(e){ log('لا يمكن فك JWT','warn'); }
+  }catch(e){ log('getConfig fail '+e.message,'err'); }
+
+  // 3) Fetch مباشر
+  section('3) اختبار fetch مباشر (بدون SupabaseSync) — يكشف CORS');
+  try{
+    const cfg=SupabaseSync.getConfig();
+    log('GET '+cfg.url+'/rest/v1/products?select=*&limit=1','info');
+    const ctrl=new AbortController(); setTimeout(()=>ctrl.abort(),8000);
+    const r=await fetch(cfg.url+'/rest/v1/products?select=*&limit=1', {
+      headers:{'apikey':cfg.key,'Authorization':'Bearer '+cfg.key},
+      cache:'no-store',
+      signal: ctrl.signal
+    });
+    log('HTTP '+r.status+' '+r.statusText, r.ok?'ok':'err');
+    log('headers: '+JSON.stringify(Object.fromEntries(r.headers.entries())).slice(0,300),'info');
+    const txt=await r.text();
+    log('Body أول 400: '+txt.slice(0,400), r.ok?'ok':'err');
+    if(r.status===401) log('→ 401 = Key خاطئ أو منتهي — راجع Supabase anon/service_role','err');
+    if(r.status===406) log('→ 406 = مشكلة هيدر — غالباً CORS','err');
+    if(!r.ok && txt.includes('CORS')) log('→ CORS مرفوض','err');
+    if(r.ok) log('✓ fetch مباشر نجح — Supabase سليم، المشكلة ليست في السيرفر','ok');
+  }catch(e){
+    log('✗ fetch مباشر فشل: '+e.message+' ('+e.name+')','err');
+    if(e.message.includes('Failed to fetch') || e.name==='TypeError'){
+      log('→ هذا غالباً CORS — خاصة لو origin=null (file://) والـ Supabase لا يسمح بـ null','err');
+      log('→ جرب في Supabase Dashboard → Settings → API → Allowed Origins → أضف *','warn');
+      log('→ أو اختبر نفس الصفحة عبر http:// (VS Code) ستجده ينجح → يثبت أن المشكلة CORS فقط','info');
+    }
+    if(e.name==='AbortError') log('→ timeout — إنترنت بطيء','err');
+  }
+
+  // 4) SupabaseSync.getProducts
+  section('4) اختبار SupabaseSync.getProducts() — المسار الحقيقي للتطبيق');
+  try{
+    const t0=Date.now();
+    const data=await SupabaseSync.getProducts();
+    log('✓ نجح — عدد المنتجات: '+data.length+' في '+(Date.now()-t0)+'ms','ok');
+    if(data.length>0) log('أول منتج: '+JSON.stringify(data[0]).slice(0,250),'ok');
+    else log('السحابة فارغة — لكن الاتصال سليم','warn');
+  }catch(e){ log('✗ فشل getProducts: '+e.message,'err'); log('→ لو fetch المباشر نجح وهذا فشل → مشكلة في SupabaseSync retry/headers','err'); }
+
+  // 5) OTA vs SW Cache
+  section('5) OTA vs ServiceWorker Cache');
+  try{
+    const ver=localStorage.getItem('ota_version');
+    log('ota_version: '+(ver||'لا يوجد'),'info');
+    if('serviceWorker' in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      log('SW registrations: '+regs.length,'info');
+      for(const r of regs) log(' - scope: '+r.scope+' state: '+r.active?.state+' scriptURL: '+r.active?.scriptURL,'info');
+      const keys=await caches.keys();
+      log('Cache keys: '+keys.join(', '),'info');
+      // افحص هل supabase_sync.js داخل كاش OTA
+      for(const k of keys){
+        if(k.startsWith('nahal-ota-')){
+          const c=await caches.open(k);
+          const reqs=await c.keys();
+          const hasSupa = reqs.some(req=> req.url.includes('supabase_sync.js'));
+          log('  cache '+k+': '+reqs.length+' ملفات — supabase_sync.js فيه؟ '+(hasSupa?'نعم ⚠ قد يكون قديم':'لا'),'info');
+        }
+      }
+    } else log('SW غير مدعوم','err');
+  }catch(e){ log('SW check fail '+e.message,'err'); }
+
+  // 6) Firebase/FCM
+  section('6) Firebase / FCM — هل المشكلة منه؟');
+  try{
+    log('isCordova: '+(!!window.cordova),'info');
+    log('FirebasePlugin موجود؟ '+(!!window.FirebasePlugin),'info');
+    log('FCMManager موجود؟ '+(!!window.FCMManager)+' (لو فتحت debug مباشرة قد يكون false — افتح index.html للفحص الحقيقي)','info');
+    // ملاحظة: debug_supabase.html الآن يحمل fcm_manager.js، لكن في APK بدون firebasex → isCordova=false طبيعي
+    if(window.FCMManager && window.FCMManager.isCordova && !window.FCMManager.isCordova()){
+      log('→ FCMManager موجود لكن ليس Cordova/FirebasePlugin — طبيعي في PWA أو APK بدون firebasex','warn');
+      log('→ المزامنة تستخدم Supabase + BackgroundFetch (لا تحتاج Firebase) — Firebase للـ push فقط عند القتل الكامل','info');
+    }
+    if(window.cordova && !window.FirebasePlugin){
+      log('→ أنت في APK لكن FirebasePlugin غير مثبت — APK 3.27 المبني بدون firebasex لتعارض AGP 8.10','warn');
+      log('→ لا يؤثر على المزامنة','info');
+    }
+    const pending=localStorage.getItem('fcm_token_pending')||'لا يوجد';
+    const saved=localStorage.getItem('fcm_token')||'لا يوجد';
+    log('fcm_token: '+(saved!=='لا يوجد'?saved.slice(0,20)+'...':saved),'info');
+    log('fcm_token_pending: '+(pending!=='لا يوجد'?pending.slice(0,20)+'...':pending),'info');
+    // جرب قراءة fcm_tokens من Supabase
+    try{
+      const cfg=SupabaseSync.getConfig();
+      const r=await fetch(cfg.url+'/rest/v1/fcm_tokens?select=*&limit=1', {headers:{'apikey':cfg.key,'Authorization':'Bearer '+cfg.key}, cache:'no-store'});
+      log('fcm_tokens table HTTP '+r.status, r.ok?'ok':'err');
+      if(r.ok){
+        const txt=await r.text();
+        log('fcm_tokens sample: '+txt.slice(0,200),'info');
+      } else {
+        const txt=await r.text();
+        log('fcm_tokens fail: '+txt.slice(0,200),'err');
+        if(r.status===404 || txt.includes('Could not find')) log('→ جدول fcm_tokens غير موجود — نفذ supabase_fcm_setup.sql في Supabase','err');
+      }
+    }catch(e){ log('fcm_tokens fetch fail '+e.message,'err'); }
+  }catch(e){ log('firebase check fail '+e.message,'err'); }
+
+  section('الخلاصة');
+  log('• لو fetch المباشر نجح في VS Code وفشل هنا → المشكلة CORS file:// (ليست Supabase ولا Firebase) — حلها بالمسح + ضبط Supabase CORS','warn');
+  log('• لو OTA قديم (3.25/3.26) → مسح OTA سيحلها فوراً — اضغط الزر الأحمر','warn');
+  log('• لو fcm_tokens فشل → Firebase غير مهيأ لكن لا يمنع المزامنة','info');
+  log('✓ انتهى — انسخ هذه النتائج وأرسلها','info');
+}
+
+async function testCors(){
+  log('\n━━━ اختبار CORS منفصل ━━━','warn');
+  try{
+    const cfg=SupabaseSync.getConfig();
+    // جرب fetch مع Origin header صريح
+    const r=await fetch(cfg.url+'/rest/v1/products?select=*&limit=1', {
+      method:'GET',
+      headers:{'apikey':cfg.key,'Authorization':'Bearer '+cfg.key},
+      cache:'no-store'
+    });
+    log('CORS test HTTP '+r.status+' CORS headers: '+r.headers.get('access-control-allow-origin'),'info');
+  }catch(e){ log('CORS test fail '+e.message,'err'); }
+}
+
+async function testFirebase(){
+  log('\n━━━ Firebase test ━━━','warn');
+  if(!window.FCMManager){
+    log('FCMManager غير موجود — هذا طبيعي لو فتحت debug_supabase.html مباشرة بدون تحميل fcm_manager.js','warn');
+    log('→ افتح index.html ثم في الكونسول اكتب: FCMManager.isCordova()','info');
+    log('→ في APK الحالي 3.27 بدون firebasex → isCordova=false → Firebase غير مطلوب للمزامنة (المزامنة عبر Supabase)','info');
+    return;
+  }
+  log('FCMManager.isCordova: '+FCMManager.isCordova(),'info');
+  if(FCMManager.isCordova()){
+    log('محاولة جلب توكن...','info');
+    const ok=await FCMManager.init();
+    log('init result: '+ok,'info');
+  } else log('ليس Cordova — Firebase Web Push يحتاج VAPID (غير مطلوب للمزامنة)','info');
+}
+
+async function clearOTA(){
+  log('▶ مسح OTA + SW...','info');
+  let c=0;
+  for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k&&k.startsWith('ota_')){ localStorage.removeItem(k); c++; } }
+  localStorage.removeItem('ota_version'); localStorage.removeItem('ota_github_sha'); localStorage.removeItem('ota_ignore_version');
+  log('مسح '+c+' ota_','ok');
+  if('caches' in window){
+    const keys=await caches.keys();
+    for(const k of keys) if(k.startsWith('nahal-ota-')){ await caches.delete(k); log('حذف كاش: '+k,'ok'); }
+  }
+  if('serviceWorker' in navigator){
+    const regs=await navigator.serviceWorker.getRegistrations();
+    for(const r of regs){ await r.unregister(); log('إلغاء SW: '+r.scope,'ok'); }
+  }
+  log('✓ تم — سيعاد التحميل بعد 1.5ث','ok');
+  setTimeout(()=> location.href='index.html?nuke=1',1500);
+}
+</script>
+</body></html>

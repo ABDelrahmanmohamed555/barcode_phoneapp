@@ -1,6 +1,6 @@
 // sw.js — Service Worker V2 — يدعم OTA سحابي 100% (أيقونة/اسم/HTML جذري)
 const CACHE_PREFIX = 'nahal-ota-';
-let CURRENT_CACHE = CACHE_PREFIX + 'v3.23';
+let CURRENT_CACHE = CACHE_PREFIX + 'v4.0';
 // نسخة سحابية قد تُحدث عبر postMessage UPDATE_CACHE
 
 const ASSETS = [
@@ -24,7 +24,7 @@ function compareVer(a,b){
   return 0;
 }
 self.addEventListener('install', e=>{
-  console.log('[SW 3.23] install - OTA V2 responsive');
+  console.log('[SW 4.0] install - OTA V2 responsive');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(keys.filter(k=>{
       if(!k.startsWith(CACHE_PREFIX)) return false;
@@ -41,7 +41,7 @@ self.addEventListener('install', e=>{
 });
 
 self.addEventListener('activate', e=>{
-  console.log('[SW 3.23] activate');
+  console.log('[SW 4.0] activate');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(
       keys.filter(k=>{
@@ -111,6 +111,148 @@ self.addEventListener('fetch', e=>{
   );
 });
 
+// === مزامنة خلفية ذاتية — تخزين إعدادات Supabase داخل SW ===
+let _bgSupaUrl = null;
+let _bgSupaKey = null;
+let _bgLastCount = null;
+let _bgLastBarcodes = null; // Set serialized
+const BG_DB = 'nahal-bg-sync';
+const BG_STORE = 'state';
+function _bgIDB(){
+  return new Promise((res, rej)=>{
+    try{
+      const req = indexedDB.open(BG_DB, 1);
+      req.onupgradeneeded = ()=>{ try{ req.result.createObjectStore(BG_STORE); }catch(e){} };
+      req.onsuccess = ()=> res(req.result);
+      req.onerror = ()=> rej(req.error);
+    }catch(e){ rej(e); }
+  });
+}
+async function _bgSaveConfig(url, key){
+  _bgSupaUrl = url; _bgSupaKey = key;
+  try{
+    const db = await _bgIDB();
+    const tx = db.transaction(BG_STORE,'readwrite');
+    tx.objectStore(BG_STORE).put(url, 'supa_url');
+    tx.objectStore(BG_STORE).put(key, 'supa_key');
+  }catch(e){}
+}
+async function _bgLoadConfig(){
+  if(_bgSupaUrl && _bgSupaKey) return {url:_bgSupaUrl, key:_bgSupaKey};
+  try{
+    const db = await _bgIDB();
+    const tx = db.transaction(BG_STORE,'readonly');
+    const get = (k)=> new Promise(r=>{
+      const req=tx.objectStore(BG_STORE).get(k);
+      req.onsuccess=()=>r(req.result); req.onerror=()=>r(null);
+    });
+    const u = await get('supa_url');
+    const k = await get('supa_key');
+    if(u && k){ _bgSupaUrl=u; _bgSupaKey=k; return {url:u,key:k}; }
+  }catch(e){}
+  return null;
+}
+async function _bgGetLastState(){
+  if(_bgLastCount!==null) return {count:_bgLastCount, barcodes:_bgLastBarcodes};
+  try{
+    const db=await _bgIDB();
+    const tx=db.transaction(BG_STORE,'readonly');
+    const get=(k)=>new Promise(r=>{ const req=tx.objectStore(BG_STORE).get(k); req.onsuccess=()=>r(req.result); req.onerror=()=>r(null); });
+    const c=await get('last_count');
+    const b=await get('last_barcodes');
+    if(c!==undefined && c!==null){ _bgLastCount=c; _bgLastBarcodes=b; return {count:c, barcodes:b}; }
+  }catch(e){}
+  return {count:null, barcodes:null};
+}
+async function _bgSaveLastState(count, barcodes){
+  _bgLastCount=count; _bgLastBarcodes=barcodes;
+  try{
+    const db=await _bgIDB();
+    const tx=db.transaction(BG_STORE,'readwrite');
+    tx.objectStore(BG_STORE).put(count,'last_count');
+    tx.objectStore(BG_STORE).put(barcodes,'last_barcodes');
+  }catch(e){}
+}
+async function _bgFetchAndNotify(){
+  const cfg = await _bgLoadConfig();
+  if(!cfg || !cfg.url || !cfg.key){
+    console.log('[SW BG] لا يوجد إعداد Supabase — محاولة جلب من clients');
+    // حاول طلب الإعداد من أي نافذة مفتوحة
+    try{
+      const clientsList = await clients.matchAll({type:'window', includeUncontrolled:true});
+      if(clientsList.length>0){
+        clientsList[0].postMessage({type:'REQUEST_SYNC_CONFIG'});
+        // fallback: اطلب مزامنة عبر العميل
+        clientsList[0].postMessage({type:'DO_BG_SYNC'});
+      }
+    }catch(e){}
+    return;
+  }
+  try{
+    const r = await fetch(cfg.url + '/rest/v1/products?select=*&order=id.desc', {
+      headers:{'apikey': cfg.key, 'Authorization':'Bearer '+cfg.key},
+      cache:'no-store'
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const data = await r.json();
+    if(!Array.isArray(data)) return;
+    const newCount = data.length;
+    const newBarcodes = JSON.stringify(data.map(p=>p.barcode).sort());
+    const last = await _bgGetLastState();
+    if(last.count===null){
+      await _bgSaveLastState(newCount, newBarcodes);
+      console.log('[SW BG] تهيئة أولية', newCount);
+      return;
+    }
+    if(newCount > last.count){
+      const diff = newCount - last.count;
+      let names = '';
+      try{ names = data.slice(0, diff).map(p=> p.name).slice(0,2).join('، '); }catch(e){}
+      const title = diff===1 ? 'منتج جديد ✓' : `${diff} منتجات جديدة ✓`;
+      const body = diff===1 ? `${data[0]?.name||'منتج'} — تمت إضافته` : `${names}${diff>2?' ...':''}`;
+      // لا ترسل لو diff من نفس الجلسة الذاتية — قارن الباركود
+      if(newBarcodes !== last.barcodes){
+        await self.registration.showNotification(title, {
+          body: body,
+          icon: './icon.png',
+          badge: './icon.png',
+          tag: 'new-product-'+Date.now(),
+          vibrate: [200,100,200],
+          data: {url: './index.html'},
+          requireInteraction: false
+        }).catch(()=>{});
+        console.log('[SW BG] إشعار منتج جديد', diff);
+        // أيضاً أبلغ العملاء المفتوحين لتحديث الواجهة
+        try{
+          const cl = await clients.matchAll({type:'window', includeUncontrolled:true});
+          cl.forEach(c=> c.postMessage({type:'BG_PRODUCTS_UPDATED', count:newCount}));
+        }catch(e){}
+      }
+    } else if(newCount < last.count){
+      // حذف — حدث العداد بدون إشعار صاخب
+      console.log('[SW BG] حذف', last.count,'->',newCount);
+    } else {
+      // نفس العدد لكن قد يكون تعديل سعر/اسم — قارن الباركود هاش
+      if(newBarcodes !== last.barcodes){
+        // تغييرات في القائمة (استبدال) — قد تكون تعديلات
+        const oldSet = new Set(JSON.parse(last.barcodes||'[]'));
+        const newSet = new Set(data.map(p=>p.barcode));
+        const added = [...newSet].filter(x=> !oldSet.has(x));
+        if(added.length>0){
+          const prod = data.find(p=> p.barcode===added[0]);
+          await self.registration.showNotification('منتج جديد ✓', {
+            body: `${prod?.name||added[0]} — تمت إضافته`,
+            icon:'./icon.png', badge:'./icon.png', tag:'new-product-'+Date.now(), vibrate:[200,100,200], data:{url:'./index.html'}
+          }).catch(()=>{});
+        }
+      }
+    }
+    await _bgSaveLastState(newCount, newBarcodes);
+  }catch(e){
+    console.log('[SW BG] fetch fail', e.message);
+  }
+}
+
 self.addEventListener('message', e=>{
   if(e.data && e.data.type==='SKIP_WAITING') self.skipWaiting();
   if(e.data && e.data.type==='UPDATE_CACHE'){
@@ -120,6 +262,13 @@ self.addEventListener('message', e=>{
   }
   if(e.data && e.data.type==='NUKE_ALL'){
     e.waitUntil(caches.keys().then(keys=> Promise.all(keys.map(k=> caches.delete(k)))));
+  }
+  // حفظ إعدادات Supabase للمزامنة الذاتية
+  if(e.data && e.data.type==='SYNC_CONFIG'){
+    e.waitUntil(_bgSaveConfig(e.data.url, e.data.key));
+  }
+  if(e.data && e.data.type==='SET_BG_STATE'){
+    e.waitUntil(_bgSaveLastState(e.data.count, e.data.barcodes));
   }
   // === واتساب: استقبال طلب إظهار إشعار من الصفحة (Realtime) ===
   if(e.data && e.data.type==='SHOW_NOTIFICATION'){
@@ -136,21 +285,13 @@ self.addEventListener('message', e=>{
       })
     );
   }
-  // مزامنة في الخلفية (Background Sync)
+  // مزامنة في الخلفية (Background Sync) — الآن ذاتية + fallback
   if(e.data && e.data.type==='SYNC_PRODUCTS'){
-    e.waitUntil(
-      fetch(e.data.supabaseUrl + '/rest/v1/products?select=*&order=id.desc', {
-        headers: {'apikey': e.data.supabaseKey, 'Authorization': 'Bearer ' + e.data.supabaseKey},
-        cache: 'no-store'
-      }).then(r=> r.json()).then(data=>{
-        return self.registration.showNotification('مزامنة خلفية', {
-          body: `تمت مزامنة ${Array.isArray(data)?data.length:0} منتج`,
-          icon: './icon.png',
-          tag: 'bg-sync',
-          silent: true
-        }).catch(()=>{});
-      }).catch(()=>{})
-    );
+    if(e.data.supabaseUrl && e.data.supabaseKey){
+      e.waitUntil(_bgSaveConfig(e.data.supabaseUrl, e.data.supabaseKey).then(()=> _bgFetchAndNotify()));
+    } else {
+      e.waitUntil(_bgFetchAndNotify());
+    }
   }
 });
 
@@ -195,31 +336,25 @@ self.addEventListener('notificationclick', e=>{
   );
 });
 
-// === Periodic Background Sync (لو مدعوم) ===
+// === Periodic Background Sync (ذاتي 100% حتى لو التطبيق مقفول) ===
 self.addEventListener('periodicsync', e=>{
   if(e.tag === 'sync-products'){
     console.log('[SW] periodicsync', e.tag);
-    e.waitUntil(
-      // سيتم استدعاء مزامنة عبر الرسائل — نحتاج supabase config من clients
-      clients.matchAll({type:'window'}).then(clients=>{
-        if(clients.length>0){
-          clients[0].postMessage({type:'DO_BG_SYNC'});
-        }
-      })
-    );
+    e.waitUntil(_bgFetchAndNotify().then(()=>{
+      // أيضاً حاول إبلاغ العملاء إن وجدوا
+      return clients.matchAll({type:'window'}).then(list=>{
+        list.forEach(c=> c.postMessage({type:'DO_BG_SYNC'}));
+      });
+    }));
   }
 });
 self.addEventListener('sync', e=>{
   if(e.tag === 'sync-products'){
     console.log('[SW] background sync', e.tag);
-    e.waitUntil(
-      clients.matchAll({type:'window'}).then(clients=>{
-        if(clients.length>0) clients[0].postMessage({type:'DO_BG_SYNC'});
-        else {
-          // fallback: حاول جلب مباشرة لو عندنا config مخزن (يُرسل لاحقاً من الصفحة)
-          return fetch('./version.json', {cache:'no-store'}).catch(()=>{});
-        }
-      })
-    );
+    e.waitUntil(_bgFetchAndNotify().then(()=>{
+      return clients.matchAll({type:'window'}).then(list=>{
+        if(list.length>0) list.forEach(c=> c.postMessage({type:'DO_BG_SYNC'}));
+      });
+    }));
   }
 });
