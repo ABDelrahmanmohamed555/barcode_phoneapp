@@ -107,3 +107,29 @@ body{margin:0;background:var(--bg-dark);color:var(--text-white);direction:rtl;he
 .sync-actions button{padding:2px 8px;font-size:11px;border-radius:4px;border:none;cursor:pointer;font-weight:600;transition:transform 120ms, opacity 120ms}
 .sync-actions button:active{transform:scale(0.94)}
 .sync-meta{font-size:10px;color:#6c7a91;white-space:nowrap}
+
+/* ===== قائمة التسعير — انبثاق سحابي ===== */
+.pricing-card{margin:6px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color 220ms, box-shadow 220ms, transform 220ms}
+.pricing-card:active{transform:scale(0.99)}
+.pricing-card.expanded{border-color:var(--accent);box-shadow:0 6px 18px rgba(200,148,58,0.12)}
+.pricing-row{display:flex;align-items:center;padding:10px 10px;gap:6px;cursor:pointer;user-select:none}
+.pricing-row span{flex:1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+.pricing-row span.w-num{flex:0 0 40px;color:var(--accent);font-weight:700}
+.pricing-row .edit-icon{flex:0 0 28px;height:28px;border-radius:6px;background:var(--bg-input);border:1px solid var(--border);display:grid;place-items:center;font-size:12px;color:var(--accent);opacity:0;transform:scale(0.7) rotate(-10deg);transition:opacity 220ms 100ms, transform 260ms cubic-bezier(0.22,1,0.36,1) 100ms;pointer-events:none}
+.pricing-card.expanded .edit-icon{opacity:1;transform:scale(1) rotate(0);pointer-events:auto}
+.pricing-expand{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows 340ms cubic-bezier(0.22,1,0.36,1), opacity 260ms ease}
+.pricing-card.expanded .pricing-expand{grid-template-rows:1fr;opacity:1}
+.pricing-expand-inner{overflow:hidden;min-height:0}
+.pricing-expand-body{padding:0 10px 10px}
+.pricing-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.pricing-field label{font-size:11px;color:var(--text-light);margin:0 0 4px;display:block;text-align:right}
+.pricing-field .input{height:36px;text-align:center;font-weight:700}
+.pricing-name-row{display:flex;align-items:center;gap:8px;margin-top:10px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+.pricing-name-row .name-text{flex:1;text-align:right;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pricing-name-row .name-input{flex:1;height:32px;background:var(--bg-dark);border:1px solid var(--accent);border-radius:6px;color:var(--text-white);padding:0 8px;text-align:right;display:none}
+.pricing-name-row.editing .name-text{display:none}
+.pricing-name-row.editing .name-input{display:block}
+.pricing-actions{display:flex;gap:8px;margin-top:10px}
+.pricing-actions .btn{flex:1;height:38px;font-size:13px}
+.pricing-card.closing .pricing-expand{grid-template-rows:0fr;opacity:0;transition:grid-template-rows 280ms ease, opacity 200ms ease}
+.pricing-card.closing .edit-icon{opacity:0;transform:scale(0.7) rotate(-10deg);transition:opacity 160ms, transform 160ms}

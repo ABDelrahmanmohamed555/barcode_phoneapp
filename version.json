@@ -1,24 +1,25 @@
 {
-  "version": "3.5",
-  "build": 42,
-  "date": "2026-09-13T09:55:40",
-  "notes": "OTA V2 - سحابي 100% للأيقونة والاسم والـ HTML الجذري بدون APK",
+  "version": "3.6",
+  "build": 43,
+  "date": "2026-09-13T10:22:58",
+  "notes": "قائمة تسعير انبثاق سحابي - تعديل السعر والمتاح والاسم مع القلم",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "2cc12fdf46d61226c16e2383e47853c2cbae06d44e8285f4588522a1f6648dd7",
+    "app.js": "1328a1ac3b64c9b2d076ea72ef011cc2c4b358c7967dae05125bee42b1acc19e",
     "clear_cache.html": "bd4ad6bbd26800c0179ff18fdacf55de7f24101c6b1db2cb40fd7a127e8dab6e",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
     "index.html": "3aa95a9f7bfb9be41f6d3022599ac0b09f3bddf65eef3ab9f961eb834747d275",
     "manifest.json": "f8d7763eb253611f38a9fe7f4fbb2da93da9f651d8c1daa1554ada9325dcb927",
     "products.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "style.css": "c392ce329ce8cbc4cf9bc08366fcdc98223963456e312869a98cb301bd727664",
+    "style.css": "6673ca034d70dde4692cbb1bb1f14787751bc8e460f15ddcf69dd86eccf63be1",
     "supabase_sync.js": "2f110ca8b55655449e2d9986b1ebc067893c60b36e51436349431888c695d7f9",
-    "sw.js": "d0c15b5c08330473c0478e1f5b0ac5f6771c98791d17c3baf5b91fdf8346079f",
+    "sw.js": "0505492f884e89d9bc3de8787292b63c52f034576e77ea64cd7ab1f15f7a5f2d",
     "updater.js": "5d84df4c82bf289fc6628d26d9f538b845207fe204589841b061419833bad302",
-    "version.json": "80217bbebc0b81c163e75482394b534f04630b3696d69cee8edd1f7916cf5277"
+    "version.json": "cc807a7c66ac583f949737ba77ce2e2c6784e69fe5eafb55390c71af4bbc1d8c"
   },
   "changelog": [
+    "3.6 - قائمة تسعير انبثاق سحابي - تعديل السعر والمتاح والاسم مع القلم (2026-09-13)",
     "3.5 - OTA V2 - سحابي 100% للأيقونة والاسم والـ HTML الجذري بدون APK (2026-09-13)",
     "3.4 - إصلاح وصول التحديثات - OTA نظيف 3.4 (2026-09-12)",
     "3.3 - مزامنة جديدة فقط - نظيف (2026-09-12)"

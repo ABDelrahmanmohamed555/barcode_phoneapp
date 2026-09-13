@@ -464,12 +464,13 @@ function syncPricing(){
   const count=products.filter(p=>!p.price || parseFloat(p.price)===0).length;
   if(badge) badge.textContent=count+" جاهز";
 }
+let _expandedPricingId = null;
 function renderPricingTable(){
   const q=(document.getElementById('searchPricing').value||"").trim().toLowerCase();
   const body=document.getElementById('pricingTableBody');
   if(!body) return;
   try{
-    const curHash = _hashList(products.filter(p=>!p.price || parseFloat(p.price)===0)) + "|q:" + q;
+    const curHash = _hashList(products.filter(p=>!p.price || parseFloat(p.price)===0)) + "|q:" + q + "|exp:" + _expandedPricingId;
     if(curHash === _lastPricingHash && body.children.length>0) return;
     _lastPricingHash = curHash;
   }catch(e){}
@@ -489,37 +490,152 @@ function renderPricingTable(){
   if(badge) badge.textContent=filtered.length+" جاهز";
   filtered.forEach(p=>{
     const seq=products.indexOf(p)+1;
-    const row=document.createElement('div'); row.className='row-item';
-    row.innerHTML=`
-      <span class="w-num">${seq}</span>
-      <span>${p.name}</span>
-      <span style="font-size:11px">${p.barcode}</span>
-      <span style="flex:0 0 90px"><input id="price_${p.id}" type="number" inputmode="decimal" placeholder="0.00" style="width:80px;height:30px;background:#1c2333;border:1px solid #2d3543;border-radius:6px;color:#f5f0e3;text-align:center"/><button onclick="setPrice(${p.id})" style="margin-right:4px;height:30px;padding:0 8px;background:#c8943a;color:#fff;border:none;border-radius:6px">حفظ</button></span>`;
-    body.appendChild(row);
+    const isExp = _expandedPricingId===p.id;
+    const card=document.createElement('div'); card.className='pricing-card' + (isExp?' expanded':'');
+    card.dataset.id=p.id;
+    card.innerHTML=`
+      <div class="pricing-row" onclick="togglePricingExpand(${p.id})">
+        <span class="w-num">${seq}</span>
+        <span>${p.name}</span>
+        <span style="font-size:11px">${p.barcode}</span>
+        <span class="edit-icon" onclick="event.stopPropagation(); toggleEditPricingName(${p.id})" title="تعديل الاسم">✏</span>
+      </div>
+      <div class="pricing-expand">
+        <div class="pricing-expand-inner">
+          <div class="pricing-expand-body">
+            <div class="pricing-fields">
+              <div class="pricing-field">
+                <label>المتاح</label>
+                <input id="stock_${p.id}" type="number" inputmode="numeric" class="input" value="${p.stock}" placeholder="0"/>
+              </div>
+              <div class="pricing-field">
+                <label>السعر (جنيه)</label>
+                <input id="price_${p.id}" type="number" inputmode="decimal" class="input" placeholder="0.00" value="${p.price? parseFloat(p.price).toFixed(2):''}"/>
+              </div>
+            </div>
+            <div class="pricing-name-row" id="nameRow_${p.id}">
+              <span class="name-text" id="nameText_${p.id}">${p.name}</span>
+              <input class="name-input" id="nameInput_${p.id}" value="${p.name.replace(/"/g,'&quot;')}" placeholder="اسم المنتج"/>
+              <button class="btn btn-ghost" style="height:32px;padding:0 10px;flex:0 0 auto" onclick="toggleEditPricingName(${p.id})">✏</button>
+            </div>
+            <div class="pricing-actions">
+              <button class="btn btn-ghost" onclick="collapsePricingCard(${p.id})">إلغاء</button>
+              <button class="btn btn-success" onclick="savePricing(${p.id})">حفظ</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    body.appendChild(card);
   });
   if(filtered.length===0) body.innerHTML=`<div style="text-align:center;color:#9e9e9e;padding:20px">لا يوجد منتجات بسعر 0 - الكل مسعّر</div>`;
 }
-async function setPrice(id){
-  const inp=document.getElementById('price_'+id);
-  const v=parseFloat(inp.value);
-  if(isNaN(v) || v<0) return showToast('ادخل سعر صحيح >= 0','warning');
-  try{
-    const updated = await apiPatchPrice(id, v);
-    if(updated){
-      const p=products.find(x=>x.id===id);
-      if(p) p.price=updated.price;
-      _saveLocal();
-      renderPricingTable();
-      renderUserTable();
-      const tb=document.getElementById('tableBody'); if(tb) renderTable();
-      showToast(`تم تحديث السعر ومزامنته ✓ ${updated.price} جنيه`,'success');
-      return;
-    }
-  }catch(e){
-    showToast('فشل تحديث السعر: '+e.message,'error');
+function togglePricingExpand(id){
+  if(_expandedPricingId===id){
+    collapsePricingCard(id);
     return;
   }
-  showToast('فشل تحديث السعر','error');
+  // أغلق السابق بانبثاق عكسي
+  const prev=_expandedPricingId;
+  if(prev!==null){
+    const prevCard=document.querySelector(`.pricing-card[data-id="${prev}"]`);
+    if(prevCard){
+      prevCard.classList.add('closing');
+      prevCard.classList.remove('expanded');
+      setTimeout(()=>{ _expandedPricingId=null; renderPricingTable(); }, 280);
+      setTimeout(()=>{ _expandedPricingId=id; renderPricingTable(); }, 300);
+      return;
+    }
+  }
+  _expandedPricingId=id;
+  renderPricingTable();
+  setTimeout(()=>{
+    const inp=document.getElementById('price_'+id);
+    if(inp) inp.focus();
+  }, 360);
+}
+function collapsePricingCard(id){
+  const card=document.querySelector(`.pricing-card[data-id="${id}"]`);
+  if(card){
+    card.classList.add('closing');
+    card.classList.remove('expanded');
+    setTimeout(()=>{
+      if(_expandedPricingId===id) _expandedPricingId=null;
+      _lastPricingHash="";
+      renderPricingTable();
+    }, 280);
+  } else {
+    _expandedPricingId=null;
+    _lastPricingHash="";
+    renderPricingTable();
+  }
+}
+function toggleEditPricingName(id){
+  const row=document.getElementById('nameRow_'+id);
+  if(!row) return;
+  const isEditing=row.classList.contains('editing');
+  if(isEditing){
+    row.classList.remove('editing');
+  } else {
+    row.classList.add('editing');
+    const inp=document.getElementById('nameInput_'+id);
+    if(inp){ inp.focus(); inp.select(); }
+  }
+}
+async function savePricing(id){
+  const priceInp=document.getElementById('price_'+id);
+  const stockInp=document.getElementById('stock_'+id);
+  const nameInp=document.getElementById('nameInput_'+id);
+  const vPrice=parseFloat(priceInp?priceInp.value:'');
+  const vStock=parseInt(stockInp?stockInp.value:'');
+  const vName=(nameInp?nameInp.value:document.getElementById('nameText_'+id)?.textContent||'').trim();
+  if(!vName) return showToast('ادخل اسم المنتج','warning');
+  if(isNaN(vPrice) || vPrice<0) return showToast('ادخل سعر صحيح >= 0','warning');
+  if(isNaN(vStock) || vStock<0) return showToast('ادخل متاح صحيح >= 0','warning');
+  const patch={price:vPrice, stock:vStock, name:vName, updated_at:new Date().toISOString().slice(0,19).replace('T',' ')};
+  try{
+    let updated=null;
+    if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
+      updated=await SupabaseSync.updateProduct(id, patch);
+      // fallback لو لم يرجع صف
+      if(!updated) updated=patch;
+    } else {
+      throw new Error('Supabase غير متاح');
+    }
+    const p=products.find(x=>x.id===id);
+    if(p){
+      p.price=updated.price!=null?updated.price:vPrice;
+      p.stock=updated.stock!=null?updated.stock:vStock;
+      p.name=updated.name||vName;
+      p.updated_at=updated.updated_at||patch.updated_at;
+    }
+    _saveLocal();
+    // انيميشن انبثاق عكسي ثم تحديث
+    const card=document.querySelector(`.pricing-card[data-id="${id}"]`);
+    if(card){
+      card.classList.add('closing');
+      card.classList.remove('expanded');
+      showToast(`تم الحفظ ومزامنته ✓ ${vName} — ${vPrice} جنيه / ${vStock} متاح`,'success');
+      setTimeout(()=>{
+        _expandedPricingId=null;
+        _lastPricingHash="";
+        renderPricingTable();
+        renderUserTable();
+        const tb=document.getElementById('tableBody'); if(tb) renderTable();
+      }, 300);
+    } else {
+      _expandedPricingId=null;
+      _lastPricingHash="";
+      renderPricingTable();
+      renderUserTable();
+      showToast(`تم الحفظ ✓`,'success');
+    }
+  }catch(e){
+    showToast('فشل الحفظ: '+e.message,'error');
+  }
+}
+async function setPrice(id){
+  // للتوافق مع أي استدعاء قديم — يحول إلى savePricing
+  return savePricing(id);
 }
 function scanEnter(){
   const el=document.getElementById('searchUser');
