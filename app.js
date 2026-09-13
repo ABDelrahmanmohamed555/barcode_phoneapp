@@ -726,30 +726,38 @@ initSupabaseRealtime();
 setInterval(()=>{ syncFromApi(); }, 8000);
 setInterval(()=>{ if(window.SupabaseSync && window.SupabaseSync.isConfigured() && !_supaRealtimeActive) initSupabaseRealtime(); }, 8000);
 
-// يتعرف على ريزولوشن الشاشة
+// يتعرف على ريزولوشن الشاشة — يغير أبعاد الحاوية فقط بدون لمس المحتوى الداخلي
 let _lastW=0,_lastH=0,_screenTimer=null;
 function applyScreenSize(){
-  const w=window.innerWidth, h=window.innerHeight;
-  // حماية من قيم صفرية تسبب شاشة سودة
-  if(!w || !h || w<100 || h<100) return;
+  // استخدم visualViewport إن وجد لأدق قياس مع الكيبورد
+  const vv = window.visualViewport;
+  const w = Math.round(vv ? vv.width : window.innerWidth);
+  const h = Math.round(vv ? vv.height : window.innerHeight);
+  const sw = Math.round(window.screen ? window.screen.width : w);
+  const sh = Math.round(window.screen ? window.screen.height : h);
+  const dpr = window.devicePixelRatio || 1;
+  // حماية من قيم صفرية
+  if(!w || !h || w<50 || h<50) return;
   if(w===_lastW && h===_lastH) return;
   _lastW=w; _lastH=h;
   const phone=document.querySelector('.phone');
   if(!phone) return;
-  // لا تفرض عرض ثابت على الديسكتوب — فقط على الموبايل الصغير
-  if(w<=500){
-    phone.style.width=w+'px';
-    phone.style.height=h+'px';
-    phone.style.maxWidth='none';
-    phone.style.minHeight=h+'px';
-  } else {
-    phone.style.width='';
-    phone.style.height='';
-    phone.style.maxWidth='420px';
-    phone.style.minHeight='';
-  }
+  // حدث متغيرات CSS للاستخدام في الستايل بدون إعادة رسم المحتوى
   document.documentElement.style.setProperty('--screen-w', w+'px');
   document.documentElement.style.setProperty('--screen-h', h+'px');
+  document.documentElement.style.setProperty('--screen-sw', sw+'px');
+  document.documentElement.style.setProperty('--screen-sh', sh+'px');
+  document.documentElement.style.setProperty('--screen-dpr', dpr);
+  document.documentElement.style.setProperty('--screen-orientation', w>h ? 'landscape' : 'portrait');
+  // غيّر أبعاد الحاوية الخارجية فقط — المحتوى الداخلي (كروت، inputs) يبقى بمرونة flex بدون تمدد
+  // على الموبايل: املأ الشاشة كاملة | على التابلت/ديسكتوب: حافظ على 420px في المنتصف مع ارتفاع الشاشة
+  phone.style.width = w + 'px';
+  phone.style.height = h + 'px';
+  phone.style.maxWidth = w > 520 ? '420px' : 'none';
+  phone.style.minHeight = h + 'px';
+  phone.style.margin = w > 520 ? '0 auto' : '0';
+  // لا نلمس font-size أو scale للمحتوى — يبقى ثابت
+  console.log(`[SCREEN] ${w}x${h} (screen ${sw}x${sh} @${dpr}x) → phone ${phone.style.width} ${phone.style.height}`);
 }
 function _debouncedApply(){
   if(_screenTimer) clearTimeout(_screenTimer);
