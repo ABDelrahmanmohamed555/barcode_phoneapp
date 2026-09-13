@@ -81,3 +81,29 @@ body{margin:0;background:var(--bg-dark);color:var(--text-white);direction:rtl;he
 @keyframes viewOut{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(-8px) scale(0.98)}}
 .row-item{animation:rowIn 300ms ease backwards}
 @keyframes rowIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ===== Toast System — بديل alert() ===== */
+#toastContainer{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:min(92vw,380px);align-items:center}
+.toast{pointer-events:auto;min-width:260px;max-width:100%;padding:12px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(8px);animation:toastIn 320ms cubic-bezier(0.22,1,0.36,1) forwards;direction:rtl;line-height:1.4;word-break:break-word}
+.toast.toast-out{animation:toastOut 280ms ease forwards}
+.toast-success{background:linear-gradient(135deg,#1e7a3a,#2d8a4e);border-color:rgba(45,138,78,0.4)}
+.toast-error{background:linear-gradient(135deg,#a02e2e,#c73e3e);border-color:rgba(199,62,62,0.4)}
+.toast-info{background:linear-gradient(135deg,#1c2333,#2d3543);border-color:rgba(200,148,58,0.3);color:var(--text-white)}
+.toast-warning{background:linear-gradient(135deg,#8a6a1e,#c8943a);border-color:rgba(200,148,58,0.5)}
+.toast-icon{margin-left:6px;font-size:14px;vertical-align:middle}
+@keyframes toastIn{from{opacity:0;transform:translateY(-14px) scale(0.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes toastOut{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(-10px) scale(0.96)}}
+
+/* ===== مؤشر المزامنة الجديد ===== */
+.sync-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;font-size:11px;background:#151b23;border-bottom:1px solid #2d3543;gap:8px;flex-wrap:wrap}
+.sync-indicator{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#6c7a91;flex-shrink:0;transition:background 300ms, box-shadow 300ms}
+.sync-dot.syncing{background:#c8943a;box-shadow:0 0 8px rgba(200,148,58,0.6);animation:pulseDot 1.4s ease-in-out infinite}
+.sync-dot.ok{background:#2d8a4e;box-shadow:0 0 8px rgba(45,138,78,0.6)}
+.sync-dot.error{background:#c73e3e;box-shadow:0 0 8px rgba(199,62,62,0.5);animation:pulseDot 1s ease-in-out infinite}
+.sync-dot.idle{background:#6c7a91}
+@keyframes pulseDot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.25);opacity:0.8}}
+.sync-actions{display:flex;gap:4px;align-items:center;flex-shrink:0}
+.sync-actions button{padding:2px 8px;font-size:11px;border-radius:4px;border:none;cursor:pointer;font-weight:600;transition:transform 120ms, opacity 120ms}
+.sync-actions button:active{transform:scale(0.94)}
+.sync-meta{font-size:10px;color:#6c7a91;white-space:nowrap}

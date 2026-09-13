@@ -6,6 +6,36 @@ let products=[];
 let cart=[];
 let selected=null;
 
+// ===== Toast System — بديل alert() =====
+function showToast(msg, type='info', duration=3000){
+  try{
+    const container = document.getElementById('toastContainer');
+    if(!container){
+      // fallback لو الحاوية مش موجودة
+      alert(msg);
+      return;
+    }
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    const icons = {success:'✓', error:'✕', warning:'⚠', info:'ℹ'};
+    const icon = icons[type] || icons.info;
+    toast.innerHTML = '<span class="toast-icon">'+icon+'</span> ' + msg;
+    container.appendChild(toast);
+    // auto remove
+    setTimeout(()=>{
+      toast.classList.add('toast-out');
+      setTimeout(()=>{ try{ toast.remove(); }catch(e){} }, 300);
+    }, duration);
+    // إزالة الأقدم لو زاد العدد عن 3
+    while(container.children.length > 3){
+      try{ container.firstElementChild.remove(); }catch(e){ break; }
+    }
+  }catch(e){
+    try{ alert(msg); }catch(_e){}
+  }
+}
+window.showToast = showToast;
+
 function _saveLocal(){
   try{ localStorage.setItem('prot_products', JSON.stringify(products)); }catch(e){}
 }
@@ -72,12 +102,13 @@ try{
 
 window.forceCloudSync = async ()=>{
   try{
-    if(!window.SupabaseSync || !SupabaseSync.isConfigured()){ alert('Supabase غير مهيأ'); return; }
+    if(!window.SupabaseSync || !SupabaseSync.isConfigured()){ showToast('Supabase غير مهيأ','warning'); return; }
+    _setSyncState('جاري المزامنة...','#c8943a','syncing');
     const d=await SupabaseSync.getProducts();
     _applyProducts(d,'Supabase');
     _setBadge(products.length);
-    alert('✓ تمت المزامنة من السحابة: '+products.length);
-  }catch(e){ alert('فشل: '+e.message); }
+    showToast('تمت المزامنة من السحابة: '+products.length,'success');
+  }catch(e){ showToast('فشل: '+e.message,'error'); _setSyncState('فشل المزامنة','#c73e3e','error'); }
 };
 window.clearLocalCache = ()=>{
   if(confirm('مسح الكاش المحلي وإعادة التحميل من السحابة؟')){
@@ -105,14 +136,28 @@ window.clearAllAppMemory = window.clearLocalCache;
 let _supaRealtimeActive = false;
 let _lastBadgeCount = -1;
 let _syncFailCount = 0;
+function _updateSyncDot(state){
+  const dot=document.getElementById('syncDot');
+  if(!dot) return;
+  dot.className='sync-dot ' + state;
+}
 function _setBadge(count){
   const badge=document.getElementById('syncStatus');
   if(!badge) return;
-  if(_lastBadgeCount === count) return;
+  // حدث العدد حتى لو نفس القيمة؟ نتجاهل فقط لو نفس العدد وحالة ok
+  const dot=document.getElementById('syncDot');
+  const isOk = dot && dot.classList.contains('ok');
+  if(_lastBadgeCount === count && isOk) return;
   _lastBadgeCount = count;
   badge.textContent=`مزامن ✓ ${count}`;
-  badge.style.color='#3a86c8';
+  badge.style.color='#2d8a4e';
+  _updateSyncDot('ok');
   _syncFailCount = 0;
+}
+function _setSyncState(text, color, dotState){
+  const badge=document.getElementById('syncStatus');
+  if(badge){ badge.textContent=text; badge.style.color=color; }
+  _updateSyncDot(dotState);
 }
 
 function _applyProducts(newData, source){
@@ -189,9 +234,12 @@ function _applyProducts(newData, source){
 
 async function syncFromApi(){
   if(!window.SupabaseSync || !window.SupabaseSync.isConfigured()){
-    const badge=document.getElementById('syncStatus');
-    if(badge){ badge.textContent='غير مهيأ - Supabase'; badge.style.color='#c8943a'; }
+    _setSyncState('غير مهيأ - Supabase','#c8943a','idle');
     return;
+  }
+  // حالة جاري المزامنة فقط أول مرة أو عند الفشل السابق
+  if(_syncFailCount>0 || _lastBadgeCount===-1){
+    _setSyncState('جاري المزامنة...','#c8943a','syncing');
   }
   try{
     const data = await SupabaseSync.getProducts();
@@ -205,8 +253,9 @@ async function syncFromApi(){
     console.log('Supabase fail', e.message);
     _syncFailCount++;
     if(_syncFailCount >= 2){
-      const badge=document.getElementById('syncStatus');
-      if(badge){ badge.textContent='غير متصل - السحابة'; badge.style.color='#c8943a'; }
+      _setSyncState('غير متصل - السحابة','#c73e3e','error');
+    } else {
+      _setSyncState('جاري إعادة المحاولة...','#c8943a','syncing');
     }
   }
 }
@@ -265,7 +314,7 @@ function clearForm(){
 }
 async function saveProduct(){
   const name=pName.value.trim(), barcode=pBarcode.value.trim(), cat=pCat.value, price=parseFloat(pPrice.value||0), stock=parseInt(pStock.value||0), desc=pDesc.value.trim();
-  if(!name) return alert("ادخل اسم المنتج");
+  if(!name) return showToast("ادخل اسم المنتج",'warning');
   try{
     const saved = await apiPostProduct({name, barcode, category:cat, price, stock, description:desc});
     if(saved && saved.id){
@@ -277,14 +326,14 @@ async function saveProduct(){
       if(document.getElementById('tableBody')) renderTable();
       renderPricingTable();
       clearForm();
-      alert(`تم الحفظ ومزامنته لحظياً ✓\n${saved.name} - ${saved.price} جنيه`);
+      showToast(`تم الحفظ ومزامنته لحظياً ✓ ${saved.name} - ${saved.price} جنيه`,'success',3500);
       return;
     }
   }catch(e){
-    alert('فشل الحفظ: '+e.message);
+    showToast('فشل الحفظ: '+e.message,'error',4000);
     return;
   }
-  alert('فشل الحفظ - تأكد من الاتصال بالسحابة');
+  showToast('فشل الحفظ - تأكد من الاتصال بالسحابة','error');
 }
 
 function renderTable(){
@@ -319,7 +368,7 @@ function renderTable(){
       <span>${p.name}</span>
       <span class="w-ctrl ctrl">
         <button class="show" onclick="showBarcode(${p.id})">↻</button>
-        <button class="print" onclick="alert('طباعة ${p.name}')">🖨</button>
+        <button class="print" onclick="showToast('طباعة ${p.name} - قريباً','info')">🖨</button>
         <button class="edit" onclick="editProd(${p.id})">✏</button>
         <button class="del" onclick="delProd(${p.id})">✕</button>
       </span>`;
@@ -335,9 +384,10 @@ function delProd(id){
   if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
     SupabaseSync.deleteProduct(id, bc).then(()=>{
       console.log('✓ حذف من السحابة');
-    }).catch(e=>{ alert('فشل الحذف: '+e.message); });
+      showToast('تم الحذف ✓','success');
+    }).catch(e=>{ showToast('فشل الحذف: '+e.message,'error'); });
   } else {
-    alert('Supabase غير مهيأ');
+    showToast('Supabase غير مهيأ','warning');
     return;
   }
   products=products.filter(p=>p.id!==id); _saveLocal(); renderUserTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); renderPricingTable();
@@ -452,7 +502,7 @@ function renderPricingTable(){
 async function setPrice(id){
   const inp=document.getElementById('price_'+id);
   const v=parseFloat(inp.value);
-  if(isNaN(v) || v<0) return alert('ادخل سعر صحيح >= 0');
+  if(isNaN(v) || v<0) return showToast('ادخل سعر صحيح >= 0','warning');
   try{
     const updated = await apiPatchPrice(id, v);
     if(updated){
@@ -462,14 +512,14 @@ async function setPrice(id){
       renderPricingTable();
       renderUserTable();
       const tb=document.getElementById('tableBody'); if(tb) renderTable();
-      alert(`تم تحديث السعر ومزامنته ✓ ${updated.price} جنيه`);
+      showToast(`تم تحديث السعر ومزامنته ✓ ${updated.price} جنيه`,'success');
       return;
     }
   }catch(e){
-    alert('فشل تحديث السعر: '+e.message);
+    showToast('فشل تحديث السعر: '+e.message,'error');
     return;
   }
-  alert('فشل تحديث السعر');
+  showToast('فشل تحديث السعر','error');
 }
 function scanEnter(){
   const el=document.getElementById('searchUser');
@@ -478,10 +528,10 @@ function scanEnter(){
 function addToCart(prod){
   const it=cart.find(x=>x.product.id===prod.id);
   if(it){
-    if(it.qty+1>prod.stock) return alert('المتاح فقط '+prod.stock);
+    if(it.qty+1>prod.stock) return showToast('المتاح فقط '+prod.stock,'warning');
     it.qty++;
   } else {
-    if(prod.stock<1) return alert('نفد المخزون');
+    if(prod.stock<1) return showToast('نفد المخزون','warning');
     cart.push({product:prod, qty:1});
   }
   selected=prod; renderCart(); renderDetails(prod);
@@ -515,7 +565,7 @@ function changeQty(idx,delta){
   const it=cart[idx]; if(!it) return;
   const nq=it.qty+delta;
   if(nq<1) return removeCart(idx);
-  if(nq>it.product.stock) return alert('المتاح '+it.product.stock);
+  if(nq>it.product.stock) return showToast('المتاح '+it.product.stock,'warning');
   it.qty=nq; renderCart(); renderDetails(it.product);
 }
 function removeCart(idx){ cart.splice(idx,1); renderCart(); renderDetails(null); }
@@ -527,9 +577,9 @@ function updateTotal(){
   if(el) el.textContent=`${count} قطعة | الإجمالي: ${total.toFixed(2)} جنيه`;
 }
 function checkout(){
-  if(cart.length===0) return alert('السلة فارغة');
+  if(cart.length===0) return showToast('السلة فارغة','warning');
   const total=cart.reduce((s,it)=>s+it.product.price*it.qty,0);
-  alert(`تم الدفع ${total.toFixed(2)} جنيه — ${cart.length} منتجات`);
+  showToast(`تم الدفع ${total.toFixed(2)} جنيه — ${cart.length} منتجات`,'success',4000);
   cart.forEach(it=>{ const p=products.find(x=>x.id===it.product.id); if(p) p.stock=Math.max(0,p.stock-it.qty); });
   _saveLocal();
   cart=[]; renderCart(); renderDetails(null); renderUserTable();
