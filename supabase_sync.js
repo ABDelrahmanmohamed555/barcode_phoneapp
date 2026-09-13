@@ -35,7 +35,7 @@
 
   async function supaFetch(path, opts={}){
     const cfg = getConfig();
-    if(!cfg) throw new Error('Supabase not configured');
+    if(!cfg || !cfg.url || !cfg.key) throw new Error('Supabase not configured');
     const headers = {
       'apikey': cfg.key,
       'Authorization': `Bearer ${cfg.key}`,
@@ -43,19 +43,43 @@
       'Prefer': 'return=representation'
     };
     const ctrl = new AbortController();
-    const t = setTimeout(()=> ctrl.abort(), 8000);
+    const t = setTimeout(()=> ctrl.abort(), 12000);
     try{
-      const r = await fetch(`${cfg.url}/rest/v1/${path}`, {headers, signal: ctrl.signal, ...opts});
+      const r = await fetch(`${cfg.url}/rest/v1/${path}`, {
+        headers,
+        signal: ctrl.signal,
+        mode: 'cors',
+        cache: 'no-store',
+        ...opts
+      });
       clearTimeout(t);
-      if(!r.ok) throw new Error(await r.text());
+      if(!r.ok){
+        const txt = await r.text().catch(()=> r.statusText);
+        throw new Error(`HTTP ${r.status}: ${txt.slice(0,120)}`);
+      }
       const data = await r.json().catch(()=> null);
       return data;
-    }catch(e){ clearTimeout(t); throw e; }
+    }catch(e){
+      clearTimeout(t);
+      if(e.name==='AbortError') throw new Error('انتهت مهلة الاتصال (12s) - تحقق من الإنترنت');
+      throw e;
+    }
   }
 
   async function getProducts(){
-    const data = await supaFetch(`${TABLE}?select=*&order=id.desc`);
-    return Array.isArray(data) ? data : [];
+    // مع retry داخلي مرة واحدة عند الفشل العابر
+    try{
+      const data = await supaFetch(`${TABLE}?select=*&order=id.desc`);
+      return Array.isArray(data) ? data : [];
+    }catch(e){
+      // إذا فشل بسبب شبكة عابرة، حاول مرة ثانية بعد 1.5s
+      if(e.message.includes('مهلة') || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')){
+        await new Promise(r=> setTimeout(r, 1500));
+        const data2 = await supaFetch(`${TABLE}?select=*&order=id.desc`);
+        return Array.isArray(data2) ? data2 : [];
+      }
+      throw e;
+    }
   }
 
   async function addProduct(prod){

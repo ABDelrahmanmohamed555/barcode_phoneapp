@@ -2,7 +2,7 @@
 // السحابة هي المصدر الوحيد — لا منتجات قديمة، لا كاش قديم، لا migration
 // تم مسح كل ما يخص المنتجات القديمة والتعارضات
 
-let products=[];
+let products=(()=>{ try{ const v=localStorage.getItem('prot_products'); if(v){ const a=JSON.parse(v); if(Array.isArray(a) && a.length>=0) return a; } }catch(e){} return []; })();
 let cart=[];
 let selected=null;
 
@@ -735,6 +735,15 @@ setInterval(()=>{ const d=new Date(); const cl=document.getElementById('clock');
 const scanEl=document.getElementById('scan');
 if(scanEl) scanEl.addEventListener('keydown', e=>{ if(e.key==='Enter') scanEnter(); });
 genBarcode(); renderTable(); renderUserTable(); renderPricingTable(); if(typeof renderCart==='function') renderCart();
+// عرض فوري للكاش المحلي — يظهر مزامن بالأزرق حتى قبل وصول السحابة
+try{
+  if(products.length>0){
+    _setBadge(products.length);
+  } else {
+    // لو لا يوجد كاش، اعرض جاري المزامنة مؤقتاً
+    _setSyncState('جاري المزامنة...','#c8943a','syncing');
+  }
+}catch(e){}
 syncFromApi();
 initSupabaseRealtime();
 setInterval(()=>{ syncFromApi(); }, 8000);
@@ -969,7 +978,7 @@ setInterval(backgroundAutoClean, 30000);
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="3.13";
+    const CUR="3.14";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
