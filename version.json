@@ -1,26 +1,29 @@
 {
-  "version": "3.20",
-  "build": 60,
-  "date": "2026-09-13T16:17:37",
-  "notes": "إضافة FCM واتساب: google-services + firebasex + fcm_manager + push SW",
+  "version": "3.23",
+  "build": 63,
+  "date": "2026-09-13T18:38:10",
+  "notes": "تثبيت حالة المزامنة: منع تذبذب جاري/غير متصل - سحابة فقط",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "c0bcd1302729e72bb55d2e4df5dea88ab7227c143401be4b0b4ef407e086ff61",
+    "app.js": "d48308eea5d0f93dc3309af6b16da8d190ab35aa328d8b37e3853403f47a8ffa",
     "clear_cache.html": "bd4ad6bbd26800c0179ff18fdacf55de7f24101c6b1db2cb40fd7a127e8dab6e",
     "fcm_manager.js": "ca6fd50cde8cff00d3a48e9c31bf41738df92a7d65e067eae8061a564945dd75",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
-    "index.html": "dfa29ff535abc7e5d6f4f08c11942a7776f44bc959b876a9b590ed51c9eca078",
+    "index.html": "211657837324215a6764ef6a0ce85ec3b13c07a846cf147a857f57ff1fe6acd2",
     "manifest.json": "9efd63864d9b23c36eb2be6c054762f0fda7e3c6ca946064d6be411b60b5df26",
     "products.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
     "push_notifications.js": "d4f7d64d578b7aac575f9199b0fec22da7c4aa64be65ffa51c22bae3da8d0dbd",
     "style.css": "c9daa829996470441ec8d62ec03ddb41bc4519292cff6f2378d632a3e0e9bf1a",
     "supabase_sync.js": "f785bbbd48cb317b458e7dcb2381773654511836ba7966072069ded08dfaf7f3",
-    "sw.js": "be6bfd79bf868fb700ff2cddda407f3bf8c17101989211c9208c5c164bb270d7",
-    "updater.js": "a7356a7a26c174ea307d0fbdd8c2921a3fdbec95a9cee15d55ca6eb25c8b4e1a",
-    "version.json": "139d711d534839c05be54ca5944f5a9a15c2deb9941babdf0c8d3b8e149681f2"
+    "sw.js": "263be3eb09643e0fc4ded30813bbfe8fc534f4905646276e01e82b20becb29cb",
+    "updater.js": "65f7473406a974ab8728da8acd99dd4490ee076038d15ab8c5e10c3bdd1bf41b",
+    "version.json": "ea37277a986ce7a307f4adbbb1f4cb84b020d6faed70d36329182249947ddd27"
   },
   "changelog": [
+    "3.23 - تثبيت حالة المزامنة: منع تذبذب جاري/غير متصل - سحابة فقط (2026-09-13)",
+    "3.22 - سحابة فقط: حذف المزامنة المحلية نهائياً + إبقاء الإشعارات (2026-09-13)",
+    "3.21 - إصلاح crash Firebase - إشعارات محلية مستقرة بدون FCM (2026-09-13)",
     "3.20 - إضافة FCM واتساب: google-services + firebasex + fcm_manager + push SW (2026-09-13)",
     "3.19 - إضافة إشعارات محلية + مزامنة خلفية (مرحلة 1 من واتساب C) (2026-09-13)",
     "3.18 - إصلاح جذري لمزامنة لحظية: SW لا يخزن Supabase + إعادة اتصال Realtime + تحميل كاش محلي + منع مسح عابر + إلغاء تزاحم (2026-09-13)",
@@ -37,9 +40,6 @@
     "3.10 - إصلاح نهائي توقيت UTC vs local - تسعير يتزامن فوراً (2026-09-13)",
     "3.9 - إصلاح مزامنة التسعير - إضافة barcode للـ patch + تحسين fallback (2026-09-13)",
     "3.8 - إصلاح نهائي شاشة سودة - تعطيل HTML الجذري + حماية حجم الشاشة + AUTO-CLEAN (2026-09-13)",
-    "3.7 - إصلاح الشاشة السودة - AUTO-CLEAN تلقائي مع كل فتحة (2026-09-13)",
-    "3.6 - قائمة تسعير انبثاق سحابي - تعديل السعر والمتاح والاسم مع القلم (2026-09-13)",
-    "3.5 - OTA V2 - سحابي 100% للأيقونة والاسم والـ HTML الجذري بدون APK (2026-09-13)",
-    "3.4 - إصلاح وصول التحديثات - OTA نظيف 3.4 (2026-09-12)"
+    "3.7 - إصلاح الشاشة السودة - AUTO-CLEAN تلقائي مع كل فتحة (2026-09-13)"
   ]
 }

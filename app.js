@@ -36,44 +36,26 @@ function showToast(msg, type='info', duration=3000){
 }
 window.showToast = showToast;
 
-function _saveLocal(){
-  try{ localStorage.setItem('prot_products', JSON.stringify(products)); }catch(e){}
-}
-function _loadLocal(){
-  try{
-    const raw = localStorage.getItem('prot_products');
-    if(raw){
-      const arr = JSON.parse(raw);
-      if(Array.isArray(arr) && arr.length>0){
-        products = arr.map(p=>({
-          id: p.id,
-          name: p.name||'',
-          barcode: p.barcode||'',
-          category: p.category||'عام',
-          price: parseFloat(p.price)||0,
-          stock: parseInt(p.stock)||0,
-          description: p.description||'',
-          image_path: p.image_path||'',
-          barcode_path: p.barcode_path||'',
-          created_at: p.created_at||'',
-          updated_at: p.updated_at||''
-        })).filter(p=> p.barcode);
-        console.log('[BOOT] حمل',products.length,'منتج من الكاش المحلي');
-        return true;
-      }
-    }
-  }catch(e){ console.warn('[BOOT] فشل تحميل الكاش', e.message); }
-  return false;
-}
-// حمّل الكاش فوراً قبل أي مزامنة — يمنع الشاشة الفارغة عند فشل أول طلب
-_loadLocal();
+// === سحابة فقط — لا حفظ محلي للمنتجات ===
+function _saveLocal(){ /* معطل — سحابة فقط */ }
 let _lastTableHash="", _lastUserHash="", _lastPricingHash="";
 function _hashList(arr){
   try{ return JSON.stringify(arr.map(p=> p.id+":"+p.price+":"+p.stock+":"+p.name).join("|")); }catch(e){ return ""; }
 }
 function _clearCache(){
   try{ localStorage.removeItem('prot_products'); }catch(e){}
+  try{ localStorage.removeItem('deleted_barcodes'); }catch(e){}
 }
+// تنظيف لمرة واحدة: احذف أي كاش محلي قديم للمنتجات (سحابة فقط)
+try{
+  if(localStorage.getItem('prot_products')){
+    console.log('[CLOUD-ONLY] حذف كاش محلي قديم للمنتجات');
+    localStorage.removeItem('prot_products');
+  }
+  localStorage.removeItem('deleted_barcodes');
+  localStorage.removeItem('migration_6_fixed_v37');
+  localStorage.removeItem('migration_v4_done');
+}catch(e){}
 // === مسح شامل فوري — جديد فقط ===
 function _nukeAllCaches(opts={}){
   const silent = !!opts.silent;
@@ -168,12 +150,15 @@ let _syncRetryId = null;
 let _syncInProgress = false;
 let _lastSyncTime = 0;
 let _consecutiveEmptyCount = 0;
+let _lastSuccessTime = Date.now();
+let _lastStatusChange = 0;
 function _clearSyncRetry(){
   if(_syncRetryId){ clearTimeout(_syncRetryId); _syncRetryId=null; }
 }
 function _scheduleSyncRetry(){
+  // معطل لتقليل التذبذب — الاعتماد على interval 4s الموحد
   _clearSyncRetry();
-  _syncRetryId=setTimeout(()=>{ console.log('[SYNC-RETRY] إعادة محاولة 3s'); syncFromApi({force:true}); }, 3000);
+  _syncRetryId=setTimeout(()=>{ console.log('[SYNC-RETRY] إعادة محاولة 3s'); syncFromApi({force:true}); }, 4000);
 }
 function _updateSyncDot(state){
   const dot=document.getElementById('syncDot');
@@ -194,6 +179,13 @@ function _setBadge(count){
   _clearSyncRetry();
 }
 function _setSyncState(text, color, dotState){
+  const now = Date.now();
+  // منع التذبذب: لا تغير الحالة أكثر من مرة كل 1.5 ثانية
+  if(now - _lastStatusChange < 1500){
+    const dot=document.getElementById('syncDot');
+    if(dot && dot.classList.contains(dotState)) return;
+  }
+  _lastStatusChange = now;
   const badge=document.getElementById('syncStatus');
   if(badge){ badge.textContent=text; badge.style.color=color; }
   _updateSyncDot(dotState);
@@ -215,47 +207,28 @@ function _applyProducts(newData, source){
     updated_at: p.updated_at||''
   })).filter(p=> p.barcode);
   if(normalized.length===0){
-    // === إصلاح جذري: لا تمسح المحلي عند استجابة فارغة عابرة ===
-    // السحابة قد ترجع [] مؤقتاً بسبب تأخر الشبكة/RLS/rate-limit — المسح الفوري يسبب فقدان بيانات وظهور شاشة فاضية
+    // سحابة فقط — لو السحابة فارغة، لكن قد تكون استجابة عابرة
     _consecutiveEmptyCount = (_consecutiveEmptyCount||0)+1;
-    console.warn(`[APPLY] سحابة فارغة ${source} — محاولة ${_consecutiveEmptyCount}/2 (محلي ${products.length})`);
+    console.warn(`[APPLY] سحابة فارغة ${source} — محاولة ${_consecutiveEmptyCount}/2 (ذاكرة ${products.length})`);
     if(products.length===0){
-      // لا يوجد محلي أصلاً — اعتبره طبيعي واعرض فارغ
       _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
       try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
       _setBadge(0);
       return false;
     }
     if(_consecutiveEmptyCount >= 2){
-      // تأكد مرتين متتاليتين أنها فعلاً فارغة — الآن امسح
-      const hadLocal = products.length>0;
-      let hadStorage = false;
-      try{
-        const ls = localStorage.getItem('prot_products');
-        if(ls){
-          const arr=JSON.parse(ls);
-          if(Array.isArray(arr) && arr.length>0) hadStorage = true;
-        }
-      }catch(e){}
-      try{ localStorage.setItem('prot_products', JSON.stringify([])); }catch(e){}
-      if(hadLocal || hadStorage){
-        console.log(`[APPLY] تأكدت سحابة فارغة ${source} بعد محاولتين — مسح المحلي`);
-        products = [];
-        _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
-        _saveLocal();
-        try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
-        _setBadge(0);
-        return true;
-      }
+      console.log(`[APPLY] تأكدت سحابة فارغة ${source} بعد محاولتين — مسح الذاكرة (سحابة فقط)`);
+      products = [];
+      _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
+      try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+      _setBadge(0);
+      return true;
     } else {
-      // أول مرة فارغة — احتفظ بالمحلي وأعد المحاولة للتأكد بعد 2 ثانية
-      console.log('[APPLY] احتفاظ بالمحلي مؤقتاً وإعادة التحقق بعد 2s');
+      console.log('[APPLY] سحابة فارغة — احتفاظ بالذاكرة مؤقتاً وإعادة التحقق بعد 2s');
       setTimeout(()=> { _consecutiveEmptyCount=0; syncFromApi({force:true}); }, 2000);
       return false;
     }
-    return false;
   }
-  // سحابة بها بيانات — صفّر عداد الفارغ
   _consecutiveEmptyCount = 0;
   const oldHash = _hashList(products);
   const newHash = _hashList(normalized);
@@ -264,23 +237,11 @@ function _applyProducts(newData, source){
     return np && String(np.price)===String(pr.price) && String(np.stock)===String(pr.stock) && np.name===pr.name;
   });
   if(same && oldHash===newHash){
-    try{
-      const ls = localStorage.getItem('prot_products');
-      if(ls){
-        const parsed = JSON.parse(ls);
-        if(Array.isArray(parsed) && parsed.length!==normalized.length){
-          localStorage.setItem('prot_products', JSON.stringify(normalized));
-        }
-      } else {
-        localStorage.setItem('prot_products', JSON.stringify(normalized));
-      }
-    }catch(e){}
     return false;
   }
   const prevCount = products.length;
   products = normalized.slice().sort((a,b)=> (b.id||0)-(a.id||0));
   _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
-  _saveLocal();
   renderUserTable(); renderPricingTable();
   const tb=document.getElementById('tableBody'); if(tb) renderTable();
   console.log(`✓ سحابة ${source}: ${prevCount} -> ${products.length}`);
@@ -313,10 +274,11 @@ async function syncFromApi(opts={}){
   }
   _syncInProgress = true;
   _lastSyncTime = now;
-  // اعرض جاري فقط لو لم يكن مزامن بالفعل لتقليل الوميض
+  // سحابة فقط: اعرض "جاري" فقط لو لم يكن مزامن منذ فترة (لمنع الوميض)
   const dotPrev=document.getElementById('syncDot');
   const wasOk = dotPrev && dotPrev.classList.contains('ok');
-  if(!wasOk && (_syncFailCount>0 || _lastBadgeCount===-1)){
+  const sinceSuccess = now - _lastSuccessTime;
+  if(!wasOk && (_syncFailCount>0 || _lastBadgeCount===-1 || sinceSuccess>10000)){
     _setSyncState('جاري المزامنة...','#c8943a','syncing');
   }
   try{
@@ -324,6 +286,7 @@ async function syncFromApi(opts={}){
     if(Array.isArray(data)){
       const changed = _applyProducts(data, 'Supabase');
       _setBadge(products.length);
+      _lastSuccessTime = Date.now();
       _syncFailCount = 0;
       _clearSyncRetry();
       // إشعار عند منتج جديد (polling)
@@ -340,13 +303,14 @@ async function syncFromApi(opts={}){
   }catch(e){
     console.log('Supabase fail', e.message);
     _syncFailCount++;
-    // لا تظهر غير متصل إلا بعد 3 فشلات متتالية لتجنب التبديل السريع
-    if(_syncFailCount >= 3){
+    const sinceSuccess2 = Date.now() - _lastSuccessTime;
+    // لا تظهر "غير متصل" إلا بعد 3 فشلات ومرور 12 ثانية من آخر نجاح (لمنع التذبذب)
+    if(_syncFailCount >= 4 && sinceSuccess2 > 12000){
       _setSyncState('غير متصل - السحابة','#c73e3e','error');
-    } else {
+    } else if(_syncFailCount >= 2){
       _setSyncState('جاري المزامنة...','#c8943a','syncing');
     }
-    _scheduleSyncRetry();
+    // لا تستدعي retry فوري — interval 4s سيتكفل
     return;
   }finally{
     _syncInProgress = false;
@@ -1072,46 +1036,29 @@ setTimeout(()=>{
     }
   }catch(e){}
 }, 7500);
-// === تنظيف خلفي تلقائي — مُصلّح: لا يمسح إلا بعد تأكد مزدوج ولا يسبب تزاحم ===
+// === سحابة فقط — تنظيف خلفي مبسط (لا يلمس localStorage للمنتجات) ===
 let _lastBgClean = 0;
 async function backgroundAutoClean(){
   try{
     if(!window.SupabaseSync || !SupabaseSync.isConfigured()) return;
     const now = Date.now();
-    if(now - _lastBgClean < 25000) return; // لا تنظف قبل 25 ث من آخر مرة
-    if(now - _lastSyncTime < 5000) return; // لو مزامنة حديثة ناجحة، لا حاجة
+    if(now - _lastBgClean < 30000) return;
+    if(now - _lastSyncTime < 5000) return;
     _lastBgClean = now;
     const d = await SupabaseSync.getProducts();
     if(!Array.isArray(d)) return;
     if(d.length===0){
-      // احتاج تأكد مزدوج قبل المسح — لا تمسح من أول مرة
       _consecutiveEmptyCount = (_consecutiveEmptyCount||0)+1;
       if(_consecutiveEmptyCount < 2){
-        console.log('[BG-clean] سحابة فارغة أول مرة — تأجيل المسح للتأكد');
+        console.log('[BG-clean] سحابة فارغة أول مرة — تأجيل');
         return;
       }
-      let needWipe=false;
-      try{
-        const ls = localStorage.getItem('prot_products');
-        if(ls){
-          const arr=JSON.parse(ls);
-          if(Array.isArray(arr) && arr.length>0) needWipe=true;
-        }
-      }catch(e){}
-      if(products.length>0) needWipe=true;
-      try{
-        const ver=localStorage.getItem('ota_version');
-        const otaApp=localStorage.getItem('ota_app.js')||'';
-        if(ver==='new' && otaApp && !otaApp.includes('migration_v4_done')) needWipe=true;
-      }catch(e){}
-      if(needWipe){
-        console.log('[BG-clean] سحابة فارغة مؤكدة مرتين — مسح خلفي صامت');
-        _nukeAllCaches({silent:true});
-        _setBadge(0);
+      if(products.length>0){
+        console.log('[BG-clean] سحابة فارغة مؤكدة — مسح الذاكرة');
+        products = [];
+        _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
         try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
-        if('caches' in window){
-          caches.keys().then(keys=> Promise.all(keys.filter(k=> k.includes('nahal-ota')).map(k=> caches.delete(k)))).catch(()=>{});
-        }
+        _setBadge(0);
       }
     } else {
       _consecutiveEmptyCount = 0;
@@ -1126,7 +1073,7 @@ setInterval(backgroundAutoClean, 45000);
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="3.20";
+    const CUR="3.23";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
