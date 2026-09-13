@@ -2,14 +2,108 @@
 // يعمل في المتصفح و Cordova (file://) بدون الحاجة لإعادة بناء APK
 // الفكرة: يفحص version.json من السيرفر، لو نسخة جديدة يحمل الملفات ويطبقها
 (function(){
-  const CURRENT_VERSION = "4.0"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
+  const CURRENT_VERSION = "4.3"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
   const STORAGE_KEY_VERSION = "ota_version";
   const STORAGE_KEY_IGNORE = "ota_ignore_version";
   const CHECK_INTERVAL_MS = 5 * 60 * 1000; // فحص كل 5 دقائق + عند كل فتح (كان ساعة)
 
-  // نظام التحديث عبر GitHub فقط — مثل prot/updater.py (update1,2...)
-  // لا حاجة لسيرفر محلي — Supabase هو مصدر المنتجات، و GitHub هو مصدر التحديثات
-  function getApiBase(){ return ''; }
+  // حدد سيرفر التحديث — نفس API_BASE المستخدم في app.js
+  function getApiBase(){
+    try{
+      const saved = localStorage.getItem('prot_api_base');
+      if(saved) return saved.replace(/\/+$/,'');
+      const host = location.hostname;
+      if(!host || host==='') return 'http://127.0.0.1:5000';
+      return `http://${host}:5000`;
+    }catch(e){ return 'http://127.0.0.1:5000'; }
+  }
+
+  // --- اكتشاف تلقائي للسيرفر في الشبكة المحلية (بدون إدخال يدوي) ---
+  let _discovering = false;
+  let _discoveredBase = null;
+
+  async function getLocalSubnetViaWebRTC(){
+    // يحاول استخراج IP المحلي للموبايل عبر WebRTC ثم يستنتج الشبكة
+    return new Promise(resolve=>{
+      try{
+        const pc = new RTCPeerConnection({iceServers:[]});
+        pc.createDataChannel('');
+        pc.createOffer().then(o=> pc.setLocalDescription(o)).catch(()=> resolve(null));
+        let found = false;
+        pc.onicecandidate = e=>{
+          if(found) return;
+          if(!e || !e.candidate || !e.candidate.candidate) return;
+          const m = e.candidate.candidate.match(/(\d+\.\d+\.\d+)\.\d+/);
+          if(m){
+            found = true;
+            try{ pc.close(); }catch(_){}
+            resolve(m[1] + '.');
+          }
+        };
+        setTimeout(()=> resolve(null), 1500);
+      }catch(e){ resolve(null); }
+    });
+  }
+
+  async function tryFetchBase(base, timeoutMs=900){
+    const ctrl = new AbortController();
+    const t = setTimeout(()=> ctrl.abort(), timeoutMs);
+    try{
+      const r = await fetch(base + '/api/app_version?_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal});
+      clearTimeout(t);
+      if(!r.ok) return false;
+      const j = await r.json();
+      return !!j.version;
+    }catch(e){ clearTimeout(t); return false; }
+  }
+
+  async function autoDiscoverServer(){
+    if(_discovering) return _discoveredBase;
+    const saved = (()=>{ try{ return localStorage.getItem('prot_api_base'); }catch(e){return null;} })();
+    if(saved) return saved;
+    // لو مفتوح عبر http (ليس file://) لا حاجة للبحث
+    if(location.hostname && location.hostname!=='') return null;
+    _discovering = true;
+    console.log('[OTA] بدء البحث التلقائي عن السيرفر...');
+    toast('جاري البحث التلقائي عن السيرفر...');
+    // 1) حاول استنتاج الشبكة من WebRTC
+    const subFromRTC = await getLocalSubnetViaWebRTC();
+    const prefixes = [];
+    if(subFromRTC) prefixes.push(subFromRTC);
+    // 2) شبكات شائعة (الأكثر شيوعاً أولاً)
+    const common = ['192.168.1.','192.168.0.','192.168.43.','192.168.137.','10.0.2.','10.42.0.','192.168.100.','192.168.8.','192.168.2.'];
+    for(const c of common) if(!prefixes.includes(c)) prefixes.push(c);
+
+    const concurrency = 20;
+    for(const prefix of prefixes){
+      console.log('[OTA] فحص الشبكة', prefix + 'x');
+      // افحص الـ IP الأكثر احتمالاً أولاً (1, 15, 100, 42 ...)
+      const priority = [1,15,100,42,101,102,2,10,20,30,50];
+      const rest = [];
+      for(let i=1;i<=254;i++) if(!priority.includes(i)) rest.push(i);
+      const order = [...priority, ...rest];
+      for(let start=0; start<order.length; start+=concurrency){
+        const batch = order.slice(start, start+concurrency);
+        const results = await Promise.all(batch.map(async ip=>{
+          const base = `http://${prefix}${ip}:5000`;
+          const ok = await tryFetchBase(base, 700);
+          return ok ? base : null;
+        }));
+        const found = results.find(x=> x);
+        if(found){
+          console.log('[OTA] وجد السيرفر', found);
+          try{ localStorage.setItem('prot_api_base', found); }catch(e){}
+          _discoveredBase = found;
+          _discovering = false;
+          toast('تم العثور على السيرفر تلقائياً ✓');
+          return found;
+        }
+      }
+    }
+    _discovering = false;
+    console.log('[OTA] لم يتم العثور على سيرفر');
+    return null;
+  }
   function getRemoteOverride(){
     try{ return localStorage.getItem('ota_remote_url') || null; }catch(e){ return null; }
   }
@@ -20,22 +114,25 @@
     }catch(e){}
   }
 
-  // مصدر التحديث الوحيد — GitHub Raw (مثل prot/updater.py عبر git)
+  // روابط الفحص بالترتيب — أول واحد ينجح يُستخدم
   function getCheckUrls(){
+    const api = getApiBase();
     const override = getRemoteOverride();
     const urls = [];
     if(override) urls.push(override.replace(/\/+$/,'') + '/version.json');
-    // محلي للاختبار (file://)
+    urls.push(api + '/api/app_version');
+    urls.push(api + '/version.json');
     urls.push('./version.json');
-    // GitHub هو المصدر الوحيد الموثوق — يعمل حتى لو اللابتوب مطفي بعد push
-    const PUBLIC_RAW = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main/version.json';
-    const PHONE_RAW = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main/phone%20app/version.json';
-    urls.push(PUBLIC_RAW);
-    urls.push(PHONE_RAW);
-    // لو مفتوح عبر https (GitHub Pages)
+    // لو مفتوح عبر https (GitHub Pages مثلاً) جرب نفس الـ origin
     if(location.origin && location.origin !== 'null' && location.origin !== 'file://'){
       urls.push(location.origin + '/version.json');
     }
+    // --- عبر الإنترنت (GitHub Raw) هو المصدر الوحيد عند انطفاء اللابتوب ---
+    // (تمت إزالة روابط Cloudflare/Catbox القديمة المنتهية لتجنب التضارب)
+    // --- عبر الإنترنت (GitHub Raw) — يعمل حتى لو اللابتوب مطفي (بعد push) ---
+    const PUBLIC_RAW = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main/version.json';
+    urls.push(PUBLIC_RAW);
+    urls.push(PUBLIC_RAW.replace('/version.json','/phone%20app/version.json'));
     return [...new Set(urls)];
   }
 
@@ -218,6 +315,18 @@
     const now = Date.now();
     if(!manual && now - _lastCheck < 30000) return null; // debounce 30s
     _lastCheck = now;
+    // لو لا يوجد سيرفر محفوظ ويعمل file:// حاول الاكتشاف التلقائي أولاً
+    const needDiscover = (()=>{ try{ return !localStorage.getItem('prot_api_base') && (!location.hostname || location.hostname===''); }catch(e){return false;} })();
+    if(needDiscover && !_discoveredBase){
+      const discovered = await autoDiscoverServer();
+      if(discovered){
+        // أعد بناء الروابط بعد الاكتشاف
+        _lastCheck = 0; // اسمح بفحص فوري بعد الاكتشاف
+      } else if(manual){
+        // لو يدوي ولم نجد سيرفر اعرض رسالة مساعدة
+        toast('لم يتم العثور تلقائياً — تأكد أن الموبايل والديسكتوب على نفس الواي فاي وأن السيرفر يعمل');
+      }
+    }
     const stored = getStoredVersion();
     const ignore = (()=>{ try{ return localStorage.getItem(STORAGE_KEY_IGNORE); }catch(e){ return null; } })();
     // 1) فحص GitHub commits أولاً (عبر الإنترنت حتى لو اللابتوب مطفي)

@@ -1,27 +1,32 @@
 {
-  "version": "4.0",
-  "build": 74,
-  "date": "2026-09-13T19:41:10",
-  "notes": "إعادة بناء نظام المزامنة من الصفر - Supabase وحيد + GitHub للتحديثات - مطابق للديسكتوب prot",
+  "version": "4.3",
+  "build": 78,
+  "date": "2026-09-13T22:21:23",
+  "notes": "إصلاح الإشعارات خارج التطبيق - SW بدون Notification API",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "e3000b651db22db3144395d344daef60f781128fab3b47656d1fdeec6dbeeb29",
+    "app.js": "172efe8028ffda4026c51b8fe03118f2d7f3718c41cc52f6a791e18269083dde",
     "clear_cache.html": "bd4ad6bbd26800c0179ff18fdacf55de7f24101c6b1db2cb40fd7a127e8dab6e",
     "debug_supabase.html": "abacb753227f164259a902d396f75d54c11c0f6e0f569edeb5fda0382a87439c",
     "fcm_manager.js": "5c91f4d8705ea0846e030df2f2490ca6bb4a5dfb9389ae649d2cb13b7e1dcc6e",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
-    "index.html": "4ea1a00d879dcf50e1af23cf932e05552f1fe34e47b798249aa0ab3c7eff61d6",
+    "index.html": "5b493e9c1d6fb9f41fa2a22a08ae8ec8e74027809b5386646060d215667dc2b8",
     "manifest.json": "9efd63864d9b23c36eb2be6c054762f0fda7e3c6ca946064d6be411b60b5df26",
     "products.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "push_notifications.js": "be87f1f81eecc0d295fabd03ca2ac46eb46b4cc7d6a9d6cea00df9430c829ce5",
+    "push_notifications.js": "4a9a62834142fc756ecce6f223aae0ed32236e44eb1e9e6298fd60b9cebed666",
     "style.css": "c9daa829996470441ec8d62ec03ddb41bc4519292cff6f2378d632a3e0e9bf1a",
-    "supabase_sync.js": "81caa1232f3636ab301ceba5d656bb14d73f48419df2ad1103d1dc12c0f39995",
-    "sw.js": "6e259784f7bda8a79b47a322de8757dbb1ba22dfe5ee46f72bb1cb1c7580b4f6",
-    "updater.js": "954a29296009ff35ec7383e5234fddd5da55edc18bb2cb95f24b58a013537596",
-    "version.json": "ecfdad379322288dfaa476aea93edaa7e9179f69fdd91d10a8ea2c7b2a417a0c"
+    "supabase_sync.js": "f785bbbd48cb317b458e7dcb2381773654511836ba7966072069ded08dfaf7f3",
+    "sw.js": "74457c4cb4b1f5340962bf2c8712db0987530861a884f158885d0f12549bc11d",
+    "updater.js": "dd7e13719b1674b1022767f4cf182d895f5c81395666502c6f9bb89a1daeec49",
+    "version.json": "ac4d33eaa40db95d4b6e4b39c8f6c266276972418ca1a4345cc67e080adb40d7"
   },
   "changelog": [
+    "4.3 - إصلاح الإشعارات خارج التطبيق - SW بدون Notification API (2026-09-13)",
+    "4.3 - إصلاح الإشعارات خارج التطبيق - دعم Cordova local notification + حل رسالة المتصفح لا يدعم (2026-09-13)",
+    "4.2 - إضافة FCM للإشعارات الفورية وهو مقفول - مع الحفاظ على مزامنة Supabase المستقرة (2026-09-13)",
+    "4.1 - الرجوع لـ 3.28 المستقر بعد فشل 4.0 - إلغاء إعادة البناء (2026-09-13)",
+    "4.0 - test (2026-09-13)",
     "4.0 - إعادة بناء نظام المزامنة من الصفر - Supabase وحيد + GitHub للتحديثات - مطابق للديسكتوب prot (2026-09-13)",
     "3.28 - إصلاح صفحة الفحص ديناميك + مزامنة التحديثات (2026-09-13)",
     "3.28 - حل جذري توقف مزامنة التحديثات - إصلاح اعتراض version.json + فحص كل المصادر (2026-09-13)",
@@ -36,11 +41,6 @@
     "3.23 - تثبيت حالة المزامنة: منع تذبذب جاري/غير متصل - سحابة فقط (2026-09-13)",
     "3.22 - سحابة فقط: حذف المزامنة المحلية نهائياً + إبقاء الإشعارات (2026-09-13)",
     "3.21 - إصلاح crash Firebase - إشعارات محلية مستقرة بدون FCM (2026-09-13)",
-    "3.20 - إضافة FCM واتساب: google-services + firebasex + fcm_manager + push SW (2026-09-13)",
-    "3.19 - إضافة إشعارات محلية + مزامنة خلفية (مرحلة 1 من واتساب C) (2026-09-13)",
-    "3.18 - إصلاح جذري لمزامنة لحظية: SW لا يخزن Supabase + إعادة اتصال Realtime + تحميل كاش محلي + منع مسح عابر + إلغاء تزاحم (2026-09-13)",
-    "3.17 - إلغاء الحفظ المحلي - سحابة فقط بدون تخزين محلي (2026-09-13)",
-    "3.16 - إصلاح فشل المزامنة بعد الإضافة: حفظ محلي فوري + عدم مسح عند سحابة فارغة مؤقتا + مزامنة فورية عند العودة (2026-09-13)",
-    "3.15 - استقرار المزامنة: منع التزاحم + مزامنة فورية عند العودة + polling كل 5ث + إصلاح تبديل جاري/غير متصل (2026-09-13)"
+    "3.20 - إضافة FCM واتساب: google-services + firebasex + fcm_manager + push SW (2026-09-13)"
   ]
 }
