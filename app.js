@@ -591,12 +591,23 @@ async function savePricing(id){
   if(!vName) return showToast('ادخل اسم المنتج','warning');
   if(isNaN(vPrice) || vPrice<0) return showToast('ادخل سعر صحيح >= 0','warning');
   if(isNaN(vStock) || vStock<0) return showToast('ادخل متاح صحيح >= 0','warning');
-  const patch={price:vPrice, stock:vStock, name:vName, updated_at:new Date().toISOString().slice(0,19).replace('T',' ')};
+  const orig=products.find(x=>x.id===id);
+  const patch={price:vPrice, stock:vStock, name:vName, barcode: orig?orig.barcode:undefined, updated_at:new Date().toISOString().slice(0,19).replace('T',' ')};
   try{
     let updated=null;
     if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
+      console.log('[PRICING] إرسال للسحابة',id, patch);
       updated=await SupabaseSync.updateProduct(id, patch);
-      // fallback لو لم يرجع صف
+      if(!updated){
+        console.warn('[PRICING] updateProduct رجع null — يحاول إعادة الجلب');
+        // حاول جلب المنتج بعد التحديث للتأكد
+        try{
+          const all=await SupabaseSync.getProducts();
+          updated=all.find(x=> x.id===id || x.barcode===patch.barcode) || patch;
+        }catch(e){ updated=patch; }
+      } else {
+        console.log('[PRICING] تم تحديث السحابة',updated);
+      }
       if(!updated) updated=patch;
     } else {
       throw new Error('Supabase غير متاح');
@@ -715,14 +726,24 @@ setInterval(()=>{ if(window.SupabaseSync && window.SupabaseSync.isConfigured() &
 let _lastW=0,_lastH=0,_screenTimer=null;
 function applyScreenSize(){
   const w=window.innerWidth, h=window.innerHeight;
+  // حماية من قيم صفرية تسبب شاشة سودة
+  if(!w || !h || w<100 || h<100) return;
   if(w===_lastW && h===_lastH) return;
   _lastW=w; _lastH=h;
   const phone=document.querySelector('.phone');
   if(!phone) return;
-  phone.style.width=w+'px';
-  phone.style.height=h+'px';
-  phone.style.maxWidth='none';
-  phone.style.minHeight=h+'px';
+  // لا تفرض عرض ثابت على الديسكتوب — فقط على الموبايل الصغير
+  if(w<=500){
+    phone.style.width=w+'px';
+    phone.style.height=h+'px';
+    phone.style.maxWidth='none';
+    phone.style.minHeight=h+'px';
+  } else {
+    phone.style.width='';
+    phone.style.height='';
+    phone.style.maxWidth='420px';
+    phone.style.minHeight='';
+  }
   document.documentElement.style.setProperty('--screen-w', w+'px');
   document.documentElement.style.setProperty('--screen-h', h+'px');
 }
@@ -823,7 +844,7 @@ setInterval(backgroundAutoClean, 30000);
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="3.7";
+    const CUR="3.9";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');

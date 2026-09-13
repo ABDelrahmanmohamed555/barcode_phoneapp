@@ -1,6 +1,6 @@
 // sw.js — Service Worker V2 — يدعم OTA سحابي 100% (أيقونة/اسم/HTML جذري)
 const CACHE_PREFIX = 'nahal-ota-';
-let CURRENT_CACHE = CACHE_PREFIX + 'v3.7';
+let CURRENT_CACHE = CACHE_PREFIX + 'v3.9';
 // نسخة سحابية قد تُحدث عبر postMessage UPDATE_CACHE
 
 const ASSETS = [
@@ -24,7 +24,7 @@ function compareVer(a,b){
   return 0;
 }
 self.addEventListener('install', e=>{
-  console.log('[SW 3.7] install - OTA V2');
+  console.log('[SW 3.9] install - OTA V2');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(keys.filter(k=>{
       if(!k.startsWith(CACHE_PREFIX)) return false;
@@ -41,7 +41,7 @@ self.addEventListener('install', e=>{
 });
 
 self.addEventListener('activate', e=>{
-  console.log('[SW 3.7] activate');
+  console.log('[SW 3.9] activate');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(
       keys.filter(k=>{
