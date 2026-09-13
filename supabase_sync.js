@@ -42,8 +42,13 @@
       'Content-Type': 'application/json',
       'Prefer': 'return=representation'
     };
+    // ادمج هيدرز opts إن وجدت (لتحديث Prefer مثلاً)
+    if(opts.headers){
+      Object.assign(headers, opts.headers);
+      delete opts.headers;
+    }
     const ctrl = new AbortController();
-    const t = setTimeout(()=> ctrl.abort(), 12000);
+    const t = setTimeout(()=> ctrl.abort(), 15000); // زيادة ل 15s لتجنب الفشل المتقطع على الشبكات البطيئة
     try{
       const r = await fetch(`${cfg.url}/rest/v1/${path}`, {
         headers,
@@ -55,31 +60,42 @@
       clearTimeout(t);
       if(!r.ok){
         const txt = await r.text().catch(()=> r.statusText);
+        // 503/429/502 هي أخطاء عابرة قابلة لإعادة المحاولة
+        if(r.status===503 || r.status===429 || r.status===502 || r.status===504){
+          throw new Error(`HTTP ${r.status} retryable: ${txt.slice(0,80)}`);
+        }
         throw new Error(`HTTP ${r.status}: ${txt.slice(0,120)}`);
       }
       const data = await r.json().catch(()=> null);
       return data;
     }catch(e){
       clearTimeout(t);
-      if(e.name==='AbortError') throw new Error('انتهت مهلة الاتصال (12s) - تحقق من الإنترنت');
+      if(e.name==='AbortError') throw new Error('انتهت مهلة الاتصال (15s) - تحقق من الإنترنت');
       throw e;
     }
   }
 
   async function getProducts(){
-    // مع retry داخلي مرة واحدة عند الفشل العابر
-    try{
-      const data = await supaFetch(`${TABLE}?select=*&order=id.desc`);
-      return Array.isArray(data) ? data : [];
-    }catch(e){
-      // إذا فشل بسبب شبكة عابرة، حاول مرة ثانية بعد 1.5s
-      if(e.message.includes('مهلة') || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')){
-        await new Promise(r=> setTimeout(r, 1500));
-        const data2 = await supaFetch(`${TABLE}?select=*&order=id.desc`);
-        return Array.isArray(data2) ? data2 : [];
+    // retry داخلي مرتين مع backoff لتغطية الفشل العابر (شبكة/503/timeout)
+    let lastErr = null;
+    for(let attempt=0; attempt<3; attempt++){
+      try{
+        const data = await supaFetch(`${TABLE}?select=*&order=id.desc`);
+        return Array.isArray(data) ? data : [];
+      }catch(e){
+        lastErr = e;
+        const msg = e.message || '';
+        const retryable = msg.includes('مهلة') || msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('retryable') || msg.includes('15s') || msg.includes('503') || msg.includes('429') || msg.includes('502');
+        if(retryable && attempt < 2){
+          const wait = 800 * (attempt+1);
+          console.warn(`[Supabase] getProducts retry ${attempt+1}/2 بعد ${wait}ms — ${msg.slice(0,60)}`);
+          await new Promise(r=> setTimeout(r, wait));
+          continue;
+        }
+        throw e;
       }
-      throw e;
     }
+    throw lastErr;
   }
 
   async function addProduct(prod){
@@ -88,41 +104,87 @@
     if(!prod.id){
       try{ prod.id = Date.now() + Math.floor(Math.random()*10000); }catch(e){ prod.id = Math.floor(Math.random()*1e9)+100000; }
     }
-    try{
-      const cfg = getConfig();
-      if(!cfg) throw new Error('Supabase not configured');
-      const headers = {
-        'apikey': cfg.key,
-        'Authorization': `Bearer ${cfg.key}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates,return=representation'
-      };
-      const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 8000);
-      const r = await fetch(`${cfg.url}/rest/v1/${TABLE}?on_conflict=barcode`, {method:'POST', headers, body: JSON.stringify(prod), signal: ctrl.signal});
-      clearTimeout(t);
-      if(r.ok){
-        const data = await r.json().catch(()=>null);
-        return data && data[0] ? data[0] : null;
+    // حاول upsert مع retry مرة واحدة عند الفشل العابر
+    for(let attempt=0; attempt<2; attempt++){
+      try{
+        const cfg = getConfig();
+        if(!cfg) throw new Error('Supabase not configured');
+        const headers = {
+          'apikey': cfg.key,
+          'Authorization': `Bearer ${cfg.key}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates,return=representation'
+        };
+        const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 10000);
+        const r = await fetch(`${cfg.url}/rest/v1/${TABLE}?on_conflict=barcode`, {method:'POST', headers, body: JSON.stringify(prod), signal: ctrl.signal, cache:'no-store'});
+        clearTimeout(t);
+        if(r.ok){
+          const data = await r.json().catch(()=>null);
+          return data && data[0] ? data[0] : null;
+        }
+        const txt = await r.text().catch(()=> r.statusText);
+        if(r.status===503 || r.status===429 || r.status===502){
+          throw new Error(`HTTP ${r.status} retryable: ${txt.slice(0,60)}`);
+        }
+        throw new Error(txt || `HTTP ${r.status}`);
+      }catch(e){
+        const retryable = e.message.includes('retryable') || e.message.includes('Failed to fetch') || e.message.includes('NetworkError') || e.name==='AbortError';
+        if(retryable && attempt===0){
+          console.warn('[Supabase] addProduct retry 1/1 —', e.message.slice(0,60));
+          await new Promise(r=> setTimeout(r, 900));
+          continue;
+        }
+        // fallback عادي في المحاولة الأخيرة
+        if(attempt===1){
+          try{
+            const data = await supaFetch(TABLE, {method:'POST', body: JSON.stringify(prod)});
+            return data && data[0] ? data[0] : null;
+          }catch(e2){ throw e2; }
+        }
+        throw e;
       }
-      throw new Error(await r.text());
-    }catch(e){
-      // fallback عادي
-      const data = await supaFetch(TABLE, {method:'POST', body: JSON.stringify(prod)});
-      return data && data[0] ? data[0] : null;
     }
   }
 
   async function updateProduct(id, patch){
-    // حاول التحديث بالـ id، ولو فشل جرب بالـ barcode
-    try{
-      const data = await supaFetch(`${TABLE}?id=eq.${id}`, {method:'PATCH', body: JSON.stringify(patch)});
-      if(data && data[0]) return data[0];
-    }catch(e){}
+    // حاول التحديث بالـ id مع retry، ولو فشل جرب بالـ barcode
+    for(let attempt=0; attempt<2; attempt++){
+      try{
+        const data = await supaFetch(`${TABLE}?id=eq.${id}`, {method:'PATCH', body: JSON.stringify(patch)});
+        if(data && data[0]) return data[0];
+        // لو رجع [] قد يكون id غير موجود — جرب barcode فوراً
+        break;
+      }catch(e){
+        const retryable = e.message.includes('retryable') || e.message.includes('Failed to fetch') || e.name==='AbortError';
+        if(retryable && attempt===0){
+          await new Promise(r=> setTimeout(r, 700));
+          continue;
+        }
+        break;
+      }
+    }
     // fallback بالـ barcode لو متاح في patch
     if(patch.barcode){
+      for(let attempt=0; attempt<2; attempt++){
+        try{
+          const data = await supaFetch(`${TABLE}?barcode=eq.${encodeURIComponent(patch.barcode)}`, {method:'PATCH', body: JSON.stringify(patch)});
+          return data && data[0] ? data[0] : null;
+        }catch(e){
+          const retryable = e.message.includes('retryable') || e.message.includes('Failed to fetch') || e.name==='AbortError';
+          if(retryable && attempt===0){
+            await new Promise(r=> setTimeout(r, 700));
+            continue;
+          }
+          break;
+        }
+      }
+    }
+    // آخر محاولة: جلب المنتج بعد التحديث للتأكد (قد يكون التحديث نجح لكن لم يرجع representation)
+    if(patch.barcode){
       try{
-        const data = await supaFetch(`${TABLE}?barcode=eq.${encodeURIComponent(patch.barcode)}`, {method:'PATCH', body: JSON.stringify(patch)});
-        return data && data[0] ? data[0] : null;
+        const all = await getProducts();
+        const found = all.find(x=> x.id===id || x.barcode===patch.barcode);
+        if(found) return found;
       }catch(e){}
     }
     return null;
@@ -141,17 +203,37 @@
     return true;
   }
 
-  // ========== Realtime WebSocket ==========
+  // ========== Realtime WebSocket — مُصلّح جذري (إعادة اتصال موثوقة + منع التعليق) ==========
   let _ws = null;
   let _wsTimer = null;
   let _wsRetry = 1000;
   let _onChange = null;
   let _enabled = false;
+  let _heartbeatTimer = null;
+  let _openTimeout = null;
+
+  function _isWsAlive(){
+    return _ws && _ws.readyState === 1; // OPEN
+  }
+  function _isWsConnecting(){
+    return _ws && _ws.readyState === 0; // CONNECTING
+  }
+  function _clearRealtimeTimers(){
+    if(_heartbeatTimer){ clearInterval(_heartbeatTimer); _heartbeatTimer=null; }
+    if(_openTimeout){ clearTimeout(_openTimeout); _openTimeout=null; }
+  }
 
   function _connectRealtime(onChange){
     const cfg = getConfig();
     if(!cfg || !onChange) return false;
-    if(_ws && _ws.readyState === 1) return true;
+    if(_isWsAlive()) return true;
+    if(_isWsConnecting()){
+      console.log('[Supabase] Realtime already connecting — skip');
+      return true;
+    }
+    // نظف أي مؤقت سابق قبل إنشاء اتصال جديد
+    if(_wsTimer){ clearTimeout(_wsTimer); _wsTimer=null; }
+    _clearRealtimeTimers();
     _onChange = onChange;
     _enabled = true;
     const wsUrl = cfg.url.replace(/^http/, 'ws') + '/realtime/v1/websocket?apikey=' + encodeURIComponent(cfg.key) + '&vsn=1.0.0';
@@ -159,12 +241,19 @@
       console.log('[Supabase] Realtime connecting', wsUrl.slice(0,60));
       const ws = new WebSocket(wsUrl);
       _ws = ws;
-      let heartbeat = null;
+      // مهلة 8 ثواني لفتح الاتصال وإلا اعتبره فشل وأعد المحاولة
+      _openTimeout = setTimeout(()=>{
+        if(ws.readyState !== 1){
+          console.warn('[Supabase RT] open timeout — closing');
+          try{ ws.close(); }catch(e){}
+        }
+      }, 8000);
       ws.onopen = ()=>{
         console.log('[Supabase] Realtime connected ✓');
         _wsRetry = 1000;
+        if(_openTimeout){ clearTimeout(_openTimeout); _openTimeout=null; }
         // heartbeat every 25s
-        heartbeat = setInterval(()=>{
+        _heartbeatTimer = setInterval(()=>{
           try{ ws.send(JSON.stringify({topic:"phoenix", event:"heartbeat", payload:{}, ref:"1"})); }catch(e){}
         }, 25000);
         // join channel
@@ -229,14 +318,20 @@
           }
         }catch(e){ console.log('[Supabase RT] parse fail', e.message); }
       };
-      ws.onerror = (e)=>{ console.log('[Supabase RT] error', e); };
+      ws.onerror = (e)=>{
+        console.log('[Supabase RT] error', e);
+        // لا تغلق هنا — دع onclose يتكفل بإعادة المحاولة
+      };
       ws.onclose = ()=>{
-        console.log('[Supabase RT] closed');
-        if(heartbeat) clearInterval(heartbeat);
-        _ws = null;
-        if(_enabled){
+        console.log('[Supabase RT] closed, enabled=', _enabled, ' retry=', _wsRetry);
+        _clearRealtimeTimers();
+        // احذف المرجع فقط لو هو نفس الـ ws الحالي
+        if(_ws === ws) _ws = null;
+        if(_enabled && _onChange){
+          if(_wsTimer) clearTimeout(_wsTimer);
           _wsTimer = setTimeout(()=>{
             _wsRetry = Math.min(_wsRetry*1.8, 15000);
+            console.log('[Supabase RT] reconnect in', _wsRetry);
             _connectRealtime(_onChange);
           }, _wsRetry);
         }
@@ -244,6 +339,15 @@
       return true;
     }catch(e){
       console.log('[Supabase RT] connect fail', e.message);
+      _clearRealtimeTimers();
+      // جدولة إعادة محاولة حتى لو فشل الإنشاء
+      if(_enabled && _onChange){
+        if(_wsTimer) clearTimeout(_wsTimer);
+        _wsTimer = setTimeout(()=>{
+          _wsRetry = Math.min(_wsRetry*1.8, 15000);
+          _connectRealtime(_onChange);
+        }, _wsRetry);
+      }
       return false;
     }
   }
@@ -253,18 +357,35 @@
     if(!getConfig()) return false;
     _enabled = true;
     _onChange = onChange;
+    // اسمح بإعادة الاتصال حتى لو كان هناك محاولة معلقة — _connectRealtime سيتعامل معها
     _connectRealtime(onChange);
-    // حافظ على polling كـ fallback كل 3 ثواني حتى لو RT شغال
     return true;
   }
 
   function unsubscribeRealtime(){
     _enabled = false;
     _onChange = null;
-    if(_wsTimer) clearTimeout(_wsTimer);
+    _clearRealtimeTimers();
+    if(_wsTimer){ clearTimeout(_wsTimer); _wsTimer=null; }
     if(_ws){
       try{ _ws.close(); }catch(e){}
       _ws = null;
+    }
+    _wsRetry = 1000;
+  }
+  function isRealtimeConnected(){
+    return _isWsAlive();
+  }
+  function forceRealtimeReconnect(){
+    if(_ws){
+      try{ _ws.close(); }catch(e){}
+      _ws = null;
+    }
+    _clearRealtimeTimers();
+    if(_wsTimer){ clearTimeout(_wsTimer); _wsTimer=null; }
+    _wsRetry = 1000;
+    if(_enabled && _onChange){
+      setTimeout(()=> _connectRealtime(_onChange), 500);
     }
   }
 
@@ -273,7 +394,7 @@
     getConfig, setConfig,
     getProducts, addProduct, updateProduct, deleteProduct,
     isConfigured: ()=> !!getConfig(),
-    subscribeRealtime, unsubscribeRealtime,
+    subscribeRealtime, unsubscribeRealtime, isRealtimeConnected, forceRealtimeReconnect,
     // للاختبار
     test: async ()=>{
       try{

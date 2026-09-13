@@ -1,6 +1,6 @@
 // sw.js — Service Worker V2 — يدعم OTA سحابي 100% (أيقونة/اسم/HTML جذري)
 const CACHE_PREFIX = 'nahal-ota-';
-let CURRENT_CACHE = CACHE_PREFIX + 'v3.16';
+let CURRENT_CACHE = CACHE_PREFIX + 'v3.18';
 // نسخة سحابية قد تُحدث عبر postMessage UPDATE_CACHE
 
 const ASSETS = [
@@ -24,7 +24,7 @@ function compareVer(a,b){
   return 0;
 }
 self.addEventListener('install', e=>{
-  console.log('[SW 3.16] install - OTA V2 responsive');
+  console.log('[SW 3.18] install - OTA V2 responsive');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(keys.filter(k=>{
       if(!k.startsWith(CACHE_PREFIX)) return false;
@@ -41,7 +41,7 @@ self.addEventListener('install', e=>{
 });
 
 self.addEventListener('activate', e=>{
-  console.log('[SW 3.16] activate');
+  console.log('[SW 3.18] activate');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(
       keys.filter(k=>{
@@ -59,6 +59,17 @@ self.addEventListener('activate', e=>{
 
 self.addEventListener('fetch', e=>{
   const url = new URL(e.request.url);
+  // === إصلاح جذري: لا تلمس أبداً طلبات Supabase / Realtime / API خارجية — دعها تمر مباشرة للشبكة ===
+  // هذه الطلبات يجب ألا تُخزن في Cache أبداً وإلا ترجع بيانات قديمة وتفشل المزامنة
+  if(url.hostname.includes('supabase.co') || url.hostname.includes('supabase.') || url.pathname.includes('/rest/v1/') || url.pathname.includes('/realtime/') || url.pathname.includes('/auth/v1/')){
+    // Network only — لا cache ولا fallback
+    e.respondWith(fetch(e.request, {cache:'no-store'}).catch(()=> new Response(JSON.stringify([]), {status: 503, headers:{'Content-Type':'application/json'}})));
+    return;
+  }
+  if(url.hostname.includes('githubusercontent.com') || url.hostname.includes('api.github.com')){
+    e.respondWith(fetch(e.request, {cache:'no-store'}).catch(()=> caches.match(e.request)));
+    return;
+  }
   // version.json دائماً من الشبكة
   if(url.pathname.endsWith('version.json')){
     e.respondWith(fetch(e.request, {cache:'no-store'}).catch(()=> caches.match(e.request)));
@@ -85,10 +96,13 @@ self.addEventListener('fetch', e=>{
     );
     return;
   }
-  // الباقي: network first ثم OTA cache ثم cache
+  // الباقي: network first ثم OTA cache ثم cache — لكن لا تخزن أبداً طلبات API خارجية
   e.respondWith(
     fetch(e.request, {cache:'no-store'}).then(resp=>{
-      if(resp.ok){
+      // لا تخزن طلبات API/JSON ديناميكية — فقط أصول ثابتة
+      const ct = resp.headers.get('Content-Type') || '';
+      const isApi = ct.includes('application/json') && !url.pathname.endsWith('version.json') && !url.pathname.endsWith('manifest.json');
+      if(resp.ok && !isApi){
         const clone = resp.clone();
         caches.open(CURRENT_CACHE).then(c=> c.put(e.request, clone)).catch(()=>{});
       }
