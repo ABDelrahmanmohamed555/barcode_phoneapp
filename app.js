@@ -136,6 +136,14 @@ window.clearAllAppMemory = window.clearLocalCache;
 let _supaRealtimeActive = false;
 let _lastBadgeCount = -1;
 let _syncFailCount = 0;
+let _syncRetryId = null;
+function _clearSyncRetry(){
+  if(_syncRetryId){ clearTimeout(_syncRetryId); _syncRetryId=null; }
+}
+function _scheduleSyncRetry(){
+  _clearSyncRetry();
+  _syncRetryId=setTimeout(()=>{ console.log('[SYNC-RETRY] إعادة محاولة 3s'); syncFromApi(); }, 3000);
+}
 function _updateSyncDot(state){
   const dot=document.getElementById('syncDot');
   if(!dot) return;
@@ -144,15 +152,15 @@ function _updateSyncDot(state){
 function _setBadge(count){
   const badge=document.getElementById('syncStatus');
   if(!badge) return;
-  // حدث العدد حتى لو نفس القيمة؟ نتجاهل فقط لو نفس العدد وحالة ok
   const dot=document.getElementById('syncDot');
   const isOk = dot && dot.classList.contains('ok');
   if(_lastBadgeCount === count && isOk) return;
   _lastBadgeCount = count;
   badge.textContent=`مزامن ✓ ${count}`;
-  badge.style.color='#2d8a4e';
+  badge.style.color='#3a86c8';
   _updateSyncDot('ok');
   _syncFailCount = 0;
+  _clearSyncRetry();
 }
 function _setSyncState(text, color, dotState){
   const badge=document.getElementById('syncStatus');
@@ -257,6 +265,12 @@ async function syncFromApi(){
     } else {
       _setSyncState('جاري إعادة المحاولة...','#c8943a','syncing');
     }
+    _scheduleSyncRetry();
+    return;
+  }
+  // لو وصلنا هنا بدون return (مثلاً data ليست array) اعتبره فشل واعادة محاولة
+  if(_syncFailCount>0){
+    _scheduleSyncRetry();
   }
 }
 
@@ -725,6 +739,17 @@ syncFromApi();
 initSupabaseRealtime();
 setInterval(()=>{ syncFromApi(); }, 8000);
 setInterval(()=>{ if(window.SupabaseSync && window.SupabaseSync.isConfigured() && !_supaRealtimeActive) initSupabaseRealtime(); }, 8000);
+// إعادة محاولة كل 3 ثواني عند عدم الاتصال — حتى تتم المزامنة
+setInterval(()=>{
+  const dot=document.getElementById('syncDot');
+  const isOk=dot && dot.classList.contains('ok');
+  if(_syncFailCount>0 || _lastBadgeCount===-1 || !isOk){
+    console.log('[SYNC-RETRY 3s] محاولة تلقائية');
+    syncFromApi();
+  }
+}, 3000);
+window.addEventListener('online', ()=>{ console.log('[SYNC] online'); _syncFailCount=0; _clearSyncRetry(); syncFromApi(); });
+window.addEventListener('offline', ()=>{ _setSyncState('غير متصل - السحابة','#c73e3e','error'); _scheduleSyncRetry(); });
 
 // ===== حل جذري V3.12: اكتشاف حجم الشاشة الحقيقي وملء متجاوب لكل جهاز =====
 // يكتشف العرض/الطول/DPR/الاتجاه ويضيف فئات CSS ويحدّث متغيرات --screen-*
@@ -944,7 +969,7 @@ setInterval(backgroundAutoClean, 30000);
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="3.12";
+    const CUR="3.13";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
