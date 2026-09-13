@@ -326,6 +326,8 @@ async function syncFromApi(opts={}){
       _setBadge(products.length);
       _syncFailCount = 0;
       _clearSyncRetry();
+      // إشعار عند منتج جديد (polling)
+      try{ if(window.NotifManager) NotifManager.onProductsUpdated(data, 'poll'); }catch(e){}
       // لو Realtime متوقف وحصلت مزامنة ناجحة، حاول إعادة تشغيله
       if(!changed && window.SupabaseSync && window.SupabaseSync.isRealtimeConnected && !window.SupabaseSync.isRealtimeConnected()){
         console.log('[SYNC] Realtime غير متصل — محاولة إعادة تشغيل');
@@ -396,6 +398,8 @@ function initSupabaseRealtime(){
       console.log('[Supabase RT] onChange', newData.length);
       _applyProducts(newData, 'Supabase RT');
       _setBadge(products.length);
+      // إشعار عند منتج جديد (واتساب)
+      try{ if(window.NotifManager) NotifManager.onProductsUpdated(newData, 'RT'); }catch(e){}
     });
     if(ok){
       _supaRealtimeActive = true;
@@ -441,6 +445,8 @@ function clearForm(){
 async function saveProduct(){
   const name=pName.value.trim(), barcode=pBarcode.value.trim(), cat=pCat.value, price=parseFloat(pPrice.value||0), stock=parseInt(pStock.value||0), desc=pDesc.value.trim();
   if(!name) return showToast("ادخل اسم المنتج",'warning');
+  // علّم أنك أنت اللي أضفت — عشان ما يجيلك إشعار لنفسك
+  try{ if(window.NotifManager) NotifManager.markSelfAdd(barcode); }catch(e){}
   try{
     const saved = await apiPostProduct({name, barcode, category:cat, price, stock, description:desc});
     if(saved && saved.id){
@@ -1120,7 +1126,7 @@ setInterval(backgroundAutoClean, 45000);
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="3.18";
+    const CUR="3.20";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');

@@ -1,6 +1,6 @@
 // sw.js — Service Worker V2 — يدعم OTA سحابي 100% (أيقونة/اسم/HTML جذري)
 const CACHE_PREFIX = 'nahal-ota-';
-let CURRENT_CACHE = CACHE_PREFIX + 'v3.18';
+let CURRENT_CACHE = CACHE_PREFIX + 'v3.20';
 // نسخة سحابية قد تُحدث عبر postMessage UPDATE_CACHE
 
 const ASSETS = [
@@ -24,7 +24,7 @@ function compareVer(a,b){
   return 0;
 }
 self.addEventListener('install', e=>{
-  console.log('[SW 3.18] install - OTA V2 responsive');
+  console.log('[SW 3.20] install - OTA V2 responsive');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(keys.filter(k=>{
       if(!k.startsWith(CACHE_PREFIX)) return false;
@@ -41,7 +41,7 @@ self.addEventListener('install', e=>{
 });
 
 self.addEventListener('activate', e=>{
-  console.log('[SW 3.18] activate');
+  console.log('[SW 3.20] activate');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(
       keys.filter(k=>{
@@ -120,5 +120,106 @@ self.addEventListener('message', e=>{
   }
   if(e.data && e.data.type==='NUKE_ALL'){
     e.waitUntil(caches.keys().then(keys=> Promise.all(keys.map(k=> caches.delete(k)))));
+  }
+  // === واتساب: استقبال طلب إظهار إشعار من الصفحة (Realtime) ===
+  if(e.data && e.data.type==='SHOW_NOTIFICATION'){
+    const {title, body, tag} = e.data;
+    e.waitUntil(
+      self.registration.showNotification(title || 'منتج جديد', {
+        body: body || 'تمت إضافة منتج جديد',
+        icon: './icon.png',
+        badge: './icon.png',
+        tag: tag || 'new-product',
+        vibrate: [200,100,200],
+        data: {url: './index.html'},
+        requireInteraction: false
+      })
+    );
+  }
+  // مزامنة في الخلفية (Background Sync)
+  if(e.data && e.data.type==='SYNC_PRODUCTS'){
+    e.waitUntil(
+      fetch(e.data.supabaseUrl + '/rest/v1/products?select=*&order=id.desc', {
+        headers: {'apikey': e.data.supabaseKey, 'Authorization': 'Bearer ' + e.data.supabaseKey},
+        cache: 'no-store'
+      }).then(r=> r.json()).then(data=>{
+        return self.registration.showNotification('مزامنة خلفية', {
+          body: `تمت مزامنة ${Array.isArray(data)?data.length:0} منتج`,
+          icon: './icon.png',
+          tag: 'bg-sync',
+          silent: true
+        }).catch(()=>{});
+      }).catch(()=>{})
+    );
+  }
+});
+
+// === Push API: استقبال Push من Firebase/Supabase حتى لو التطبيق مقفول ===
+self.addEventListener('push', e=>{
+  console.log('[SW] push received', e);
+  let payload = {title: 'منتج جديد', body: 'تمت إضافة منتج جديد'};
+  try{
+    if(e.data){
+      const j = e.data.json();
+      payload.title = j.title || j.notification?.title || payload.title;
+      payload.body = j.body || j.notification?.body || j.data?.name || payload.body;
+      if(j.data) payload.data = j.data;
+    }
+  }catch(err){
+    try{ payload.body = e.data.text(); }catch(_e){}
+  }
+  e.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: './icon.png',
+      badge: './icon.png',
+      tag: 'push-product',
+      vibrate: [200,100,200],
+      data: payload.data || {url: './index.html'},
+      requireInteraction: false
+    })
+  );
+});
+
+self.addEventListener('notificationclick', e=>{
+  console.log('[SW] notification click', e.notification.tag);
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || './index.html';
+  e.waitUntil(
+    clients.matchAll({type:'window', includeUncontrolled:true}).then(list=>{
+      for(const c of list){
+        if(c.url.includes('index.html') && 'focus' in c) return c.focus();
+      }
+      if(clients.openWindow) return clients.openWindow(url);
+    })
+  );
+});
+
+// === Periodic Background Sync (لو مدعوم) ===
+self.addEventListener('periodicsync', e=>{
+  if(e.tag === 'sync-products'){
+    console.log('[SW] periodicsync', e.tag);
+    e.waitUntil(
+      // سيتم استدعاء مزامنة عبر الرسائل — نحتاج supabase config من clients
+      clients.matchAll({type:'window'}).then(clients=>{
+        if(clients.length>0){
+          clients[0].postMessage({type:'DO_BG_SYNC'});
+        }
+      })
+    );
+  }
+});
+self.addEventListener('sync', e=>{
+  if(e.tag === 'sync-products'){
+    console.log('[SW] background sync', e.tag);
+    e.waitUntil(
+      clients.matchAll({type:'window'}).then(clients=>{
+        if(clients.length>0) clients[0].postMessage({type:'DO_BG_SYNC'});
+        else {
+          // fallback: حاول جلب مباشرة لو عندنا config مخزن (يُرسل لاحقاً من الصفحة)
+          return fetch('./version.json', {cache:'no-store'}).catch(()=>{});
+        }
+      })
+    );
   }
 });
