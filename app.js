@@ -261,7 +261,7 @@ async function syncFromApi(){
 }
 
 async function apiPostProduct(prod){
-  if(!prod.created_at) prod.created_at = new Date().toISOString().slice(0,19).replace('T',' ');
+  if(!prod.created_at) prod.created_at = _localNow();
   if(!prod.updated_at) prod.updated_at = prod.created_at;
   if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
     try{
@@ -272,8 +272,12 @@ async function apiPostProduct(prod){
   throw new Error('Supabase غير متاح - لا يمكن الحفظ');
 }
 
+function _localNow(){
+  const d=new Date(); const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
 async function apiPatchPrice(id, price){
-  const now = new Date().toISOString().slice(0,19).replace('T',' ');
+  const now = _localNow();
   if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
     try{
       const saved = await SupabaseSync.updateProduct(id, {price, updated_at: now});
@@ -592,7 +596,7 @@ async function savePricing(id){
   if(isNaN(vPrice) || vPrice<0) return showToast('ادخل سعر صحيح >= 0','warning');
   if(isNaN(vStock) || vStock<0) return showToast('ادخل متاح صحيح >= 0','warning');
   const orig=products.find(x=>x.id===id);
-  const patch={price:vPrice, stock:vStock, name:vName, barcode: orig?orig.barcode:undefined, updated_at:new Date().toISOString().slice(0,19).replace('T',' ')};
+  const patch={price:vPrice, stock:vStock, name:vName, barcode: orig?orig.barcode:undefined, updated_at:_localNow()};
   try{
     let updated=null;
     if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
@@ -844,7 +848,7 @@ setInterval(backgroundAutoClean, 30000);
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="3.9";
+    const CUR="3.10";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
