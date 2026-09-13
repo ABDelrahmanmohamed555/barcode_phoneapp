@@ -137,12 +137,13 @@ let _supaRealtimeActive = false;
 let _lastBadgeCount = -1;
 let _syncFailCount = 0;
 let _syncRetryId = null;
+let _syncInProgress = false;
 function _clearSyncRetry(){
   if(_syncRetryId){ clearTimeout(_syncRetryId); _syncRetryId=null; }
 }
 function _scheduleSyncRetry(){
   _clearSyncRetry();
-  _syncRetryId=setTimeout(()=>{ console.log('[SYNC-RETRY] إعادة محاولة 3s'); syncFromApi(); }, 3000);
+  _syncRetryId=setTimeout(()=>{ console.log('[SYNC-RETRY] إعادة محاولة 3s'); syncFromApi({force:true}); }, 3000);
 }
 function _updateSyncDot(state){
   const dot=document.getElementById('syncDot');
@@ -240,13 +241,21 @@ function _applyProducts(newData, source){
   return true;
 }
 
-async function syncFromApi(){
+async function syncFromApi(opts={}){
+  const force = !!(opts && opts.force);
+  if(_syncInProgress && !force) {
+    console.log('[SYNC] تخطي - مزامنة جارية بالفعل');
+    return;
+  }
   if(!window.SupabaseSync || !window.SupabaseSync.isConfigured()){
     _setSyncState('غير مهيأ - Supabase','#c8943a','idle');
     return;
   }
-  // حالة جاري المزامنة فقط أول مرة أو عند الفشل السابق
-  if(_syncFailCount>0 || _lastBadgeCount===-1){
+  _syncInProgress = true;
+  // اعرض جاري فقط لو لم يكن مزامن بالفعل لتقليل الوميض
+  const dotPrev=document.getElementById('syncDot');
+  const wasOk = dotPrev && dotPrev.classList.contains('ok');
+  if(!wasOk && (_syncFailCount>0 || _lastBadgeCount===-1)){
     _setSyncState('جاري المزامنة...','#c8943a','syncing');
   }
   try{
@@ -255,22 +264,24 @@ async function syncFromApi(){
       _applyProducts(data, 'Supabase');
       _setBadge(products.length);
       _syncFailCount = 0;
+      _clearSyncRetry();
       return;
+    } else {
+      throw new Error('بيانات غير متوقعة من السحابة');
     }
   }catch(e){
     console.log('Supabase fail', e.message);
     _syncFailCount++;
-    if(_syncFailCount >= 2){
+    // لا تظهر غير متصل إلا بعد 3 فشلات متتالية لتجنب التبديل السريع
+    if(_syncFailCount >= 3){
       _setSyncState('غير متصل - السحابة','#c73e3e','error');
     } else {
-      _setSyncState('جاري إعادة المحاولة...','#c8943a','syncing');
+      _setSyncState('جاري المزامنة...','#c8943a','syncing');
     }
     _scheduleSyncRetry();
     return;
-  }
-  // لو وصلنا هنا بدون return (مثلاً data ليست array) اعتبره فشل واعادة محاولة
-  if(_syncFailCount>0){
-    _scheduleSyncRetry();
+  }finally{
+    _syncInProgress = false;
   }
 }
 
@@ -744,21 +755,24 @@ try{
     _setSyncState('جاري المزامنة...','#c8943a','syncing');
   }
 }catch(e){}
-syncFromApi();
+syncFromApi({force:true});
 initSupabaseRealtime();
-setInterval(()=>{ syncFromApi(); }, 8000);
+setInterval(()=>{ syncFromApi({force:false}); }, 5000);
 setInterval(()=>{ if(window.SupabaseSync && window.SupabaseSync.isConfigured() && !_supaRealtimeActive) initSupabaseRealtime(); }, 8000);
-// إعادة محاولة كل 3 ثواني عند عدم الاتصال — حتى تتم المزامنة
+// إعادة محاولة كل 3 ثواني عند عدم الاتصال — حتى تتم المزامنة (مع منع التزاحم)
 setInterval(()=>{
   const dot=document.getElementById('syncDot');
   const isOk=dot && dot.classList.contains('ok');
   if(_syncFailCount>0 || _lastBadgeCount===-1 || !isOk){
     console.log('[SYNC-RETRY 3s] محاولة تلقائية');
-    syncFromApi();
+    syncFromApi({force:true});
   }
 }, 3000);
-window.addEventListener('online', ()=>{ console.log('[SYNC] online'); _syncFailCount=0; _clearSyncRetry(); syncFromApi(); });
+window.addEventListener('online', ()=>{ console.log('[SYNC] online'); _syncFailCount=0; _clearSyncRetry(); syncFromApi({force:true}); });
 window.addEventListener('offline', ()=>{ _setSyncState('غير متصل - السحابة','#c73e3e','error'); _scheduleSyncRetry(); });
+// مزامنة فورية عند عودة التطبيق للواجهة بدون الحاجة لإغلاقه
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ console.log('[SYNC] visibility visible'); syncFromApi({force:true}); }});
+window.addEventListener('focus', ()=>{ syncFromApi({force:true}); });
 
 // ===== حل جذري V3.12: اكتشاف حجم الشاشة الحقيقي وملء متجاوب لكل جهاز =====
 // يكتشف العرض/الطول/DPR/الاتجاه ويضيف فئات CSS ويحدّث متغيرات --screen-*
@@ -978,7 +992,7 @@ setInterval(backgroundAutoClean, 30000);
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="3.14";
+    const CUR="3.15";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
