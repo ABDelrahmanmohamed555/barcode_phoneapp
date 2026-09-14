@@ -43,7 +43,7 @@ window.showToast = showToast;
 
 // === سحابة فقط — لا حفظ محلي للمنتجات ===
 function _saveLocal(){ /* معطل — سحابة فقط */ }
-let _lastTableHash="", _lastUserHash="", _lastPricingHash="";
+let _lastTableHash="", _lastUserHash="", _lastPricingHash="", _lastShortageHash="";
 function _hashList(arr){
   try{ return JSON.stringify(arr.map(p=> p.id+":"+p.price+":"+p.stock+":"+p.name).join("|")); }catch(e){ return ""; }
 }
@@ -89,7 +89,7 @@ function _nukeAllCaches(opts={}){
         indexedDB.databases().then(dbs=>{ dbs.forEach(db=>{ try{ indexedDB.deleteDatabase(db.name); }catch(e){} }); }).catch(()=>{});
       }
     }catch(e){}
-    _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
+    _lastTableHash=""; _lastUserHash=""; _lastPricingHash=""; _lastShortageHash="";
     if(!silent) console.log('[NUKE] تم مسح كل الكاشات ✓');
   }catch(e){ console.log('[NUKE] fail', e.message); }
 }
@@ -106,7 +106,7 @@ window.nukeAllData = function(){
 };
 window.forceWipe = function(){
   _nukeAllCaches({silent:true});
-  try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+  try{ renderUserTable(); renderPricingTable(); renderShortageTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
   _setBadge(0);
 };
 try{
@@ -217,16 +217,16 @@ function _applyProducts(newData, source){
     _consecutiveEmptyCount = (_consecutiveEmptyCount||0)+1;
     console.warn(`[APPLY] سحابة فارغة ${source} — محاولة ${_consecutiveEmptyCount}/2 (ذاكرة ${products.length})`);
     if(products.length===0){
-      _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
-      try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+      _lastTableHash=""; _lastUserHash=""; _lastPricingHash=""; _lastShortageHash="";
+      try{ renderUserTable(); renderPricingTable(); renderShortageTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
       _setBadge(0);
       return false;
     }
     if(_consecutiveEmptyCount >= 2){
       console.log(`[APPLY] تأكدت سحابة فارغة ${source} بعد محاولتين — مسح الذاكرة (سحابة فقط)`);
       products = [];
-      _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
-      try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+      _lastTableHash=""; _lastUserHash=""; _lastPricingHash=""; _lastShortageHash="";
+      try{ renderUserTable(); renderPricingTable(); renderShortageTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
       _setBadge(0);
       return true;
     } else {
@@ -248,8 +248,8 @@ function _applyProducts(newData, source){
   const prevCount = products.length;
   products = normalized.slice().sort((a,b)=> (b.id||0)-(a.id||0));
   _syncWindowProducts();
-  _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
-  renderUserTable(); renderPricingTable();
+  _lastTableHash=""; _lastUserHash=""; _lastPricingHash=""; _lastShortageHash="";
+  renderUserTable(); renderPricingTable(); renderShortageTable();
   const tb=document.getElementById('tableBody'); if(tb) renderTable();
   // حدث حالة الخلفية في SW أيضاً
   try{ _updateSWBgState(); }catch(e){}
@@ -427,6 +427,7 @@ async function saveProduct(){
       renderUserTable();
       if(document.getElementById('tableBody')) renderTable();
       renderPricingTable();
+      renderShortageTable();
       _setBadge(products.length);
       clearForm();
       showToast(`تم الحفظ ومزامنته لحظياً ✓ ${saved.name} - ${saved.price} جنيه`,'success',3500);
@@ -494,11 +495,11 @@ function delProd(id){
     showToast('Supabase غير مهيأ','warning');
     return;
   }
-  products=products.filter(p=>p.id!==id); _syncWindowProducts(); _saveLocal(); renderUserTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); renderPricingTable(); try{ _updateSWBgState(); }catch(e){}
+  products=products.filter(p=>p.id!==id); _syncWindowProducts(); _saveLocal(); renderUserTable(); renderShortageTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); renderPricingTable(); try{ _updateSWBgState(); }catch(e){}
 }
 
 function switchRole(r){
-  const map={admin:'viewAdmin', employee:'viewUser', pricing:'viewPricing'};
+  const map={admin:'viewAdmin', employee:'viewUser', pricing:'viewPricing', shortage:'viewShortage'};
   Object.values(map).forEach(id=>{
     const el=document.getElementById(id);
     if(el){ el.classList.remove('active'); el.style.display='none'; }
@@ -514,6 +515,8 @@ function switchRole(r){
   document.getElementById('tabUser').classList.toggle('active', r==='employee');
   const tabPricing=document.getElementById('tabPricing');
   if(tabPricing) tabPricing.classList.toggle('active', r==='pricing');
+  const tabShortage=document.getElementById('tabShortage');
+  if(tabShortage) tabShortage.classList.toggle('active', r==='shortage');
   const ul=document.getElementById('userLabel');
   if(ul) ul.textContent='المستخدم: '+(r==='admin'?'admin':'user');
   const tabAdmin=document.getElementById('tabAdmin');
@@ -521,12 +524,17 @@ function switchRole(r){
   if(tabAdmin) tabAdmin.textContent='اضافة منتج';
   if(tabUser) tabUser.textContent='المنتجات ';
   if(tabPricing) tabPricing.textContent='تسعير منتج';
+  if(tabShortage) tabShortage.textContent='النواقص';
   if(r==='employee') {
     renderUserTable();
   }
   if(r==='pricing') {
     syncPricing();
     renderPricingTable();
+  }
+  if(r==='shortage'){
+    syncShortage();
+    renderShortageTable();
   }
 }
 function renderUserTable(){
@@ -678,9 +686,10 @@ async function saveEditModal(){
     }
     _syncWindowProducts();
     try{ _updateSWBgState(); }catch(e){}
-    _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
+    _lastTableHash=""; _lastUserHash=""; _lastPricingHash=""; _lastShortageHash="";
     renderUserTable();
     renderPricingTable();
+    renderShortageTable();
     const tb=document.getElementById('tableBody'); if(tb) renderTable();
     _setBadge(products.length);
     closeEditModal();
@@ -740,7 +749,6 @@ function ensureEditModalExists(){
 }
 function hideCacheButton(){
   try{
-    // أخفِ أي زر ينادي clearLocalCache / يحتوي ⟲ أو كلمة كاش
     const btns = document.querySelectorAll('.sync-actions button');
     btns.forEach(b=>{
       const onclick = b.getAttribute('onclick')||'';
@@ -752,16 +760,60 @@ function hideCacheButton(){
     });
   }catch(e){}
 }
+function ensureShortageViewExists(){
+  try{
+    if(document.getElementById('viewShortage')) return;
+    const pricingView = document.getElementById('viewPricing');
+    if(!pricingView || !pricingView.parentNode) return;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+  <div id=\"viewShortage\" class=\"view\" style=\"display:none\">
+    <div class=\"card\">
+      <div class=\"card-header\" style=\"justify-content:space-between;padding:0 12px\"><span>النواقص</span><span id=\"shortageCount\" class=\"badge\">0 منتج</span></div>
+      <div style=\"padding:10px;color:#c8943a;font-size:12px;text-align:right\">المنتجات التي متاحها أقل من 3 — مرتبة تصاعدياً (0 أولاً كأولوية)</div>
+      <div class=\"search-row\">
+        <input id=\"searchShortage\" class=\"input\" placeholder=\"بحث في النواقص بالاسم أو الباركود\" oninput=\"renderShortageTable()\"/>
+        <button class=\"btn btn-accent\" style=\"width:40px\" onclick=\"syncShortage()\">↻</button>
+      </div>
+      <div class=\"list-header\">
+        <span class=\"w-num\">الرقم</span>
+        <span class=\"w-num\">المتاح</span>
+        <span>السعر</span>
+        <span>الفئة</span>
+        <span style=\"flex:1.2\">الباركود</span>
+        <span style=\"flex:1.5\">الاسم</span>
+        <span class=\"w-ctrl\" style=\"flex:0 0 70px\">تعديل</span>
+      </div>
+      <div id=\"shortageTableBody\" style=\"flex:1;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none\"></div>
+    </div>
+  </div>`;
+    const el = wrap.firstElementChild;
+    pricingView.parentNode.insertBefore(el, pricingView.nextSibling);
+    console.log('[SHORTAGE] view injected via JS OTA ✓');
+  }catch(e){ console.warn('[SHORTAGE] inject view fail', e); }
+  try{
+    const tabs = document.querySelector('.tabs div');
+    if(tabs && !document.getElementById('tabShortage')){
+      const btn = document.createElement('button');
+      btn.id='tabShortage';
+      btn.style.cssText='min-width:120px;background:#c73e3e;color:#fff;border-color:#c73e3e';
+      btn.textContent='النواقص';
+      btn.onclick = ()=> switchRole('shortage');
+      tabs.appendChild(btn);
+      console.log('[SHORTAGE] tab injected ✓');
+    }
+  }catch(e){}
+}
 // شغّل فوراً و عند الجاهزية (لضمان بعد OTA)
-try{ ensureEditModalExists(); hideCacheButton(); }catch(e){}
+try{ ensureEditModalExists(); ensureShortageViewExists(); hideCacheButton(); }catch(e){}
 if(document.readyState==='loading'){
-  document.addEventListener('DOMContentLoaded', ()=>{ try{ ensureEditModalExists(); hideCacheButton(); }catch(e){} });
+  document.addEventListener('DOMContentLoaded', ()=>{ try{ ensureEditModalExists(); ensureShortageViewExists(); hideCacheButton(); }catch(e){} });
 } else {
-  setTimeout(()=>{ try{ ensureEditModalExists(); hideCacheButton(); }catch(e){} }, 300);
+  setTimeout(()=>{ try{ ensureEditModalExists(); ensureShortageViewExists(); hideCacheButton(); }catch(e){} }, 300);
 }
 // راقب DOM لو تأخر تحميل sync-bar
 try{
-  const obs = new MutationObserver(()=>{ hideCacheButton(); });
+  const obs = new MutationObserver(()=>{ hideCacheButton(); ensureShortageViewExists(); });
   obs.observe(document.documentElement, {childList:true, subtree:true});
   setTimeout(()=> obs.disconnect(), 8000);
 }catch(e){}
@@ -835,6 +887,67 @@ function renderPricingTable(){
   });
   if(filtered.length===0) body.innerHTML=`<div style="text-align:center;color:#9e9e9e;padding:20px">لا يوجد منتجات بسعر 0 - الكل مسعّر</div>`;
 }
+// ===== النواقص: متاح < 3 مرتب تصاعدي =====
+function syncShortage(){
+  const badge=document.getElementById('shortageCount');
+  const c = products.filter(p=> (parseInt(p.stock)||0) < 3).length;
+  if(badge) badge.textContent=c+" منتج";
+}
+function renderShortageTable(){
+  const qEl=document.getElementById('searchShortage');
+  const q=(qEl? qEl.value : "").trim().toLowerCase();
+  const body=document.getElementById('shortageTableBody');
+  if(!body) return;
+  // فلترة + ترتيب تصاعدي حسب المتاح (0 أولاً)
+  let filtered = products.filter(p=> (parseInt(p.stock)||0) < 3);
+  // ترتيب تصاعدي
+  filtered.sort((a,b)=> (parseInt(a.stock)||0) - (parseInt(b.stock)||0) || (a.name||'').localeCompare(b.name||''));
+  // بحث
+  if(q){
+    filtered=filtered.filter(p=>{
+      if(/^\d+$/.test(q)){
+        const seq=products.indexOf(p)+1;
+        if(String(seq)===q) return true;
+        if(String(p.id)===q) return true;
+      }
+      return p.name.toLowerCase().includes(q) || p.barcode.includes(q) || String(p.stock).includes(q);
+    });
+  }
+  try{
+    const curHash = _hashList(filtered) + "|q:" + q;
+    if(curHash === _lastShortageHash && body.children.length>0) return;
+    _lastShortageHash = curHash;
+  }catch(e){}
+  body.innerHTML="";
+  const badge=document.getElementById('shortageCount');
+  if(badge) badge.textContent=filtered.length+" منتج";
+  filtered.forEach((p)=>{
+    const seq=products.indexOf(p)+1;
+    const stockVal = parseInt(p.stock)||0;
+    let stockColor = stockVal===0 ? '#c73e3e' : stockVal===1 ? '#c8943a' : '#dbaa55';
+    let stockBg = stockVal===0 ? 'rgba(199,62,62,.15)' : stockVal===1 ? 'rgba(200,148,58,.15)' : 'rgba(219,170,85,.12)';
+    const row=document.createElement('div'); row.className='row-item';
+    // تلوين صف النواقص حسب الخطورة
+    row.style.borderRight=`3px solid ${stockColor}`;
+    row.innerHTML=`
+      <span class="w-num">${seq}</span>
+      <span class="w-num" style="color:${stockColor};background:${stockBg};border-radius:4px;padding:2px 0;font-weight:900">${stockVal}</span>
+      <span class="price">${parseFloat(p.price).toFixed(2)}</span>
+      <span>${p.category}</span>
+      <span style="font-size:11px;flex:1.2">${p.barcode}</span>
+      <span style="flex:1.5">${p.name}</span>
+      <span class="w-ctrl" style="flex:0 0 70px;display:flex;gap:4px;justify-content:center">
+        <button class="edit" style="width:62px;height:26px;font-size:11px;background:#c8943a;color:#fff;border:none;border-radius:6px;cursor:pointer" onclick="openEditModal(${p.id})" title="تعديل">✏ تعديل</button>
+      </span>`;
+    row.style.cursor='pointer';
+    row.addEventListener('click', (e)=>{
+      if(e.target.closest('button')) return;
+      openEditModal(p.id);
+    });
+    body.appendChild(row);
+  });
+  if(filtered.length===0) body.innerHTML=`<div style="text-align:center;color:#9e9e9e;padding:20px">لا يوجد نواقص — كل المنتجات متاحها ≥ 3</div>`;
+}
 function togglePricingExpand(id){
   if(_expandedPricingId===id){
     collapsePricingCard(id);
@@ -866,13 +979,13 @@ function collapsePricingCard(id){
     card.classList.remove('expanded');
     setTimeout(()=>{
       if(_expandedPricingId===id) _expandedPricingId=null;
-      _lastPricingHash="";
-      renderPricingTable();
+      _lastPricingHash=""; _lastShortageHash="";
+      renderPricingTable(); renderShortageTable();
     }, 280);
   } else {
     _expandedPricingId=null;
-    _lastPricingHash="";
-    renderPricingTable();
+    _lastPricingHash=""; _lastShortageHash="";
+    renderPricingTable(); renderShortageTable();
   }
 }
 function toggleEditPricingName(id){
@@ -934,15 +1047,15 @@ async function savePricing(id){
       showToast(`تم الحفظ ومزامنته ✓ ${vName} — ${vPrice} جنيه / ${vStock} متاح`,'success');
       setTimeout(()=>{
         _expandedPricingId=null;
-        _lastPricingHash="";
-        renderPricingTable();
+        _lastPricingHash=""; _lastShortageHash="";
+        renderPricingTable(); renderShortageTable();
         renderUserTable();
         const tb=document.getElementById('tableBody'); if(tb) renderTable();
       }, 300);
     } else {
       _expandedPricingId=null;
-      _lastPricingHash="";
-      renderPricingTable();
+      _lastPricingHash=""; _lastShortageHash="";
+      renderPricingTable(); renderShortageTable();
       renderUserTable();
       showToast(`تم الحفظ ✓`,'success');
     }
@@ -1015,14 +1128,14 @@ function checkout(){
   showToast(`تم الدفع ${total.toFixed(2)} جنيه — ${cart.length} منتجات`,'success',4000);
   cart.forEach(it=>{ const p=products.find(x=>x.id===it.product.id); if(p) p.stock=Math.max(0,p.stock-it.qty); });
   _syncWindowProducts(); try{ _updateSWBgState(); }catch(e){}
-  cart=[]; renderCart(); renderDetails(null); renderUserTable();
+  cart=[]; renderCart(); renderDetails(null); renderUserTable(); renderShortageTable();
   const tb=document.getElementById('tableBody'); if(tb) renderTable();
 }
 
 setInterval(()=>{ const d=new Date(); const cl=document.getElementById('clock'); const dl=document.getElementById('dateLabel'); if(cl) cl.textContent=d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', hour12:true}); if(dl) dl.textContent=d.toLocaleDateString('en-GB'); },1000);
 const scanEl=document.getElementById('scan');
 if(scanEl) scanEl.addEventListener('keydown', e=>{ if(e.key==='Enter') scanEnter(); });
-genBarcode(); renderTable(); renderUserTable(); renderPricingTable(); if(typeof renderCart==='function') renderCart();
+genBarcode(); renderTable(); renderUserTable(); renderPricingTable(); renderShortageTable(); if(typeof renderCart==='function') renderCart();
 // عرض فوري للكاش المحلي — يظهر مزامن بالأزرق حتى قبل وصول السحابة
 // === إرسال إعدادات Supabase إلى SW للمزامنة الذاتية — V4.4 مُصلح جذري (يعيد المحاولة حتى ينجح) ===
 function _sendConfigToSW(){
@@ -1458,8 +1571,8 @@ async function backgroundAutoClean(){
         products = [];
         _syncWindowProducts();
         try{ _updateSWBgState(); }catch(e){}
-        _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
-        try{ renderUserTable(); renderPricingTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+        _lastTableHash=""; _lastUserHash=""; _lastPricingHash=""; _lastShortageHash="";
+        try{ renderUserTable(); renderPricingTable(); renderShortageTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
         _setBadge(0);
       }
     } else {
@@ -1475,7 +1588,7 @@ setInterval(backgroundAutoClean, 90000); // كان 45ث → 90ث لتقليل ا
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="4.7";
+    const CUR="4.8";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
