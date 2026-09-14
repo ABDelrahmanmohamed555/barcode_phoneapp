@@ -138,7 +138,10 @@ html, body{
 #userTableBody::-webkit-scrollbar{display:none}
 #pricingTableBody{flex:1;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none;min-height:0}
 #pricingTableBody::-webkit-scrollbar{display:none}
-.tabs{display:flex;gap:8px;padding:10px 12px;overflow-x:auto;white-space:nowrap;scrollbar-width:none;-ms-overflow-style:none;position:sticky;bottom:0;background:var(--bg-dark);border-top:1px solid var(--border);z-index:5;flex-shrink:0}
+.tabs{display:flex;gap:8px;padding:10px 12px;overflow-x:auto;white-space:nowrap;scrollbar-width:none;-ms-overflow-style:none;position:sticky;bottom:0;background:var(--bg-dark);border-top:1px solid var(--border);z-index:5;flex-shrink:0;
+  /* رفع فوق شريط التنقل بالايماءات/الأزرار — يبعد 20px + مساحة النظام */
+  padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px) + 8px);
+}
 .tabs::-webkit-scrollbar{display:none}
 .tabs button{flex:0 0 auto;min-width:120px;height:36px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-light);white-space:nowrap}
 .tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
