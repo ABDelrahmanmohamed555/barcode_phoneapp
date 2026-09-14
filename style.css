@@ -143,8 +143,24 @@ html, body{
   padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px) + 8px);
 }
 .tabs::-webkit-scrollbar{display:none}
-.tabs button{flex:0 0 auto;min-width:120px;height:36px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-light);white-space:nowrap}
-.tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.tabs button{
+  flex:0 0 auto;min-width:120px;height:36px;border-radius:10px;
+  border:1px solid transparent;
+  background:transparent;
+  color:var(--text-light);
+  white-space:nowrap;
+  position:relative;overflow:hidden;
+  transition:background 300ms cubic-bezier(0.22,1,0.36,1), color 240ms ease, border-color 300ms ease, transform 240ms cubic-bezier(0.22,1,0.36,1), box-shadow 300ms ease, opacity 240ms ease;
+}
+.tabs button:not(.active){opacity:0.78;background:rgba(255,255,255,0.02);border-color:rgba(255,255,255,0.05)}
+.tabs button:not(.active):active{transform:scale(0.96);opacity:0.95}
+.tabs button.active{
+  background:var(--accent);color:#fff;border-color:var(--accent);
+  box-shadow:0 6px 18px rgba(200,148,58,0.28), 0 2px 6px rgba(0,0,0,0.2);
+  transform:scale(1.02);
+  opacity:1;
+}
+.tabs button.active:active{transform:scale(0.98)}
 .badge{font-size:11px;background:var(--bg-input);border:1px solid var(--border);padding:2px 6px;border-radius:4px;color:var(--text-light)}
 .view{display:none;opacity:0;transform:translateY(8px) scale(0.98);flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none}
 .view::-webkit-scrollbar{display:none}
