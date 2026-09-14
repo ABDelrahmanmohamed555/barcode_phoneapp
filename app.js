@@ -296,8 +296,7 @@ async function syncFromApi(opts={}){
       _lastSuccessTime = Date.now();
       _syncFailCount = 0;
       _clearSyncRetry();
-      // إشعار عند منتج جديد (polling)
-      try{ if(window.NotifManager) NotifManager.onProductsUpdated(data, 'poll'); }catch(e){}
+      // (الإشعارات معطلة V4.7 - لا حاجة)
       // لو Realtime متوقف وحصلت مزامنة ناجحة، حاول إعادة تشغيله
       if(!changed && window.SupabaseSync && window.SupabaseSync.isRealtimeConnected && !window.SupabaseSync.isRealtimeConnected()){
         console.log('[SYNC] Realtime غير متصل — محاولة إعادة تشغيل');
@@ -371,8 +370,7 @@ function initSupabaseRealtime(){
       console.log('[Supabase RT] onChange', newData.length);
       _applyProducts(newData, 'Supabase RT');
       _setBadge(products.length);
-      // إشعار عند منتج جديد (واتساب)
-      try{ if(window.NotifManager) NotifManager.onProductsUpdated(newData, 'RT'); }catch(e){}
+      // (الإشعارات معطلة)
     });
     if(ok){
       _supaRealtimeActive = true;
@@ -418,8 +416,6 @@ function clearForm(){
 async function saveProduct(){
   const name=pName.value.trim(), barcode=pBarcode.value.trim(), cat=pCat.value, price=parseFloat(pPrice.value||0), stock=parseInt(pStock.value||0), desc=pDesc.value.trim();
   if(!name) return showToast("ادخل اسم المنتج",'warning');
-  // علّم أنك أنت اللي أضفت — عشان ما يجيلك إشعار لنفسك
-  try{ if(window.NotifManager) NotifManager.markSelfAdd(barcode); }catch(e){}
   try{
     const saved = await apiPostProduct({name, barcode, category:cat, price, stock, description:desc});
     if(saved && saved.id){
@@ -652,8 +648,6 @@ async function saveEditModal(){
   const saveBtn = document.querySelector('#editModal .btn-success');
   if(saveBtn){ saveBtn.disabled=true; saveBtn.textContent='جاري الحفظ...'; }
   try{
-    // علّم كـ self لتجنب إشعار مزعج لنفسك (اختياري)
-    try{ if(window.NotifManager) NotifManager.markSelfAdd(orig.barcode); }catch(e){}
     let updated=null;
     if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
       console.log('[EDIT] إرسال للسحابة', id, patch);
@@ -1168,14 +1162,8 @@ document.addEventListener('deviceready', ()=>{
   setTimeout(_registerPeriodicSyncApp, 2000);
   setTimeout(_sendConfigToSW, 1000);
   setTimeout(_sendConfigToSW, 3500);
-  // تفعيل الإشعارات تلقائياً عند deviceready لو لم تكن مفعلة
   setTimeout(()=>{
     try{
-      if(window.NotifManager && !localStorage.getItem('notif_enabled')){
-        console.log('[BOOT] محاولة تفعيل إشعارات تلقائية');
-        // لا نطلبه فوراً — ننتظر إذن المستخدم عبر زر أو auto في push_notifications.js
-      }
-      // أرسل حالة الخلفية بعد التأكد من الإشعارات
       _updateSWBgState();
     }catch(e){}
   }, 4000);
@@ -1204,18 +1192,8 @@ setTimeout(_sendConfigToSW, 3000);
 setTimeout(_registerPeriodicSyncApp, 1800);
 setTimeout(_updateSWBgState, 1500);
 setTimeout(_updateSWBgState, 3500);
-// اختبار إشعار يدوي للتشخيص — window.testNotif() و window.testNotifAdd()
-window.debugNotif = function(){
-  console.log('[DEBUG] notif_enabled', localStorage.getItem('notif_enabled'));
-  console.log('[DEBUG] cordova', !!window.cordova, 'local', !!(window.cordova&&window.cordova.plugins&&window.cordova.plugins.notification));
-  console.log('[DEBUG] SW controller', !!(navigator.serviceWorker&&navigator.serviceWorker.controller));
-  console.log('[DEBUG] NotifManager', !!window.NotifManager, window.NotifManager?window.NotifManager.isSupported():'?');
-  if(window.NotifManager && window.NotifManager.showNotification){
-    window.NotifManager.showNotification('اختبار debug ✓','الإشعارات تعمل — debugNotif','debug-'+Date.now());
-    return 'تم إرسال اختبار debug';
-  }
-  return 'NotifManager غير جاهز';
-};
+// (الإشعارات معطلة V4.7)
+window.debugNotif = function(){ return 'الإشعارات معطلة'; };
 // === نظام مزامنة موحّد مُصلح V4.5.2 — سريع + ذكي + بدون تزاحم ===
 let _pollFg = 3500; // سريع لما Realtime مقطوع (3.5ث)
 let _pollBg = 12000; // خلفية أسرع (12ث) بدل 25ث
@@ -1497,7 +1475,7 @@ setInterval(backgroundAutoClean, 90000); // كان 45ث → 90ث لتقليل ا
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="4.6.2";
+    const CUR="4.7";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');

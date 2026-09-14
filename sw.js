@@ -1,6 +1,6 @@
-// sw.js — Service Worker V4.4 — إصلاح إشعارات جذري + مزامنة خلفية ذاتية
+// sw.js — Service Worker V4.7 — المزامنة فقط بدون إشعارات
 const CACHE_PREFIX = 'nahal-ota-';
-let CURRENT_CACHE = CACHE_PREFIX + 'v4.6.2';
+let CURRENT_CACHE = CACHE_PREFIX + 'v4.7';
 
 // إعدادات Supabase الافتراضية — fallback حتى قبل وصول SYNC_CONFIG من الصفحة
 const DEFAULT_SUPA_URL = 'https://vseycanfadblfmkevoqe.supabase.co';
@@ -29,7 +29,7 @@ function compareVer(a,b){
   return 0;
 }
 self.addEventListener('install', e=>{
-  console.log('[SW 4.6.2] install');
+  console.log('[SW 4.7] install');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(keys.filter(k=>{
       if(!k.startsWith(CACHE_PREFIX)) return false;
@@ -45,7 +45,7 @@ self.addEventListener('install', e=>{
 });
 
 self.addEventListener('activate', e=>{
-  console.log('[SW 4.6.2] activate');
+  console.log('[SW 4.7] activate');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(
       keys.filter(k=>{
@@ -201,10 +201,11 @@ async function _bgFetchAndNotify(){
               if(last.count===null){ await _bgSaveLastState(newCount,newBarcodes); return; }
               if(newCount>last.count && newBarcodes!==last.barcodes){
                 const diff=newCount-last.count;
-                const title=diff===1?'منتج جديد ✓':`${diff} منتجات جديدة ✓`;
-                const body=diff===1?`${data[0]?.name||'منتج'} — تمت إضافته`:`${data.slice(0,diff).map(p=>p.name).slice(0,2).join('، ')}`;
-                await self.registration.showNotification(title,{body,icon:'./icon.png',badge:'./icon.png',tag:'new-product-'+Date.now(),vibrate:[200,100,200],data:{url:'./index.html'}}).catch(()=>{});
-                console.log('[SW BG] notify via DEFAULT', diff);
+                console.log('[SW BG] جديد بدون إشعار', diff, '— مزامنة فقط');
+                try{
+                  const cl = await clients.matchAll({type:'window', includeUncontrolled:true});
+                  cl.forEach(c=> c.postMessage({type:'BG_PRODUCTS_UPDATED', count:newCount}));
+                }catch(e){}
               }
               await _bgSaveLastState(newCount,newBarcodes);
             }
@@ -232,21 +233,8 @@ async function _bgFetchAndNotify(){
     }
     if(newCount > last.count){
       const diff = newCount - last.count;
-      let names = '';
-      try{ names = data.slice(0, diff).map(p=> p.name).slice(0,2).join('، '); }catch(e){}
-      const title = diff===1 ? 'منتج جديد ✓' : `${diff} منتجات جديدة ✓`;
-      const body = diff===1 ? `${data[0]?.name||'منتج'} — تمت إضافته` : `${names}${diff>2?' ...':''}`;
       if(newBarcodes !== last.barcodes){
-        await self.registration.showNotification(title, {
-          body: body,
-          icon: './icon.png',
-          badge: './icon.png',
-          tag: 'new-product-'+Date.now(),
-          vibrate: [200,100,200],
-          data: {url: './index.html'},
-          requireInteraction: false
-        }).catch(e=> console.warn('[SW BG] showNotif fail', e.message));
-        console.log('[SW BG] إشعار منتج جديد', diff, title);
+        console.log('[SW BG] جديد بدون إشعار', diff, '— مزامنة فقط V4.7');
         try{
           const cl = await clients.matchAll({type:'window', includeUncontrolled:true});
           cl.forEach(c=> c.postMessage({type:'BG_PRODUCTS_UPDATED', count:newCount}));
@@ -260,12 +248,7 @@ async function _bgFetchAndNotify(){
         const newSet = new Set(data.map(p=>p.barcode));
         const added = [...newSet].filter(x=> !oldSet.has(x));
         if(added.length>0){
-          const prod = data.find(p=> p.barcode===added[0]);
-          await self.registration.showNotification('منتج جديد ✓', {
-            body: `${prod?.name||added[0]} — تمت إضافته`,
-            icon:'./icon.png', badge:'./icon.png', tag:'new-product-'+Date.now(), vibrate:[200,100,200], data:{url:'./index.html'}
-          }).catch(()=>{});
-          console.log('[SW BG] notify added via barcode diff', added[0]);
+          console.log('[SW BG] added via diff بدون إشعار', added[0]);
         } else {
           // تعديل سعر/اسم بدون تغيير عدد — نبه أيضاً
           try{
@@ -298,19 +281,8 @@ self.addEventListener('message', e=>{
     e.waitUntil(_bgSaveLastState(e.data.count, e.data.barcodes));
   }
   if(e.data && e.data.type==='SHOW_NOTIFICATION'){
-    const {title, body, tag} = e.data;
-    console.log('[SW] SHOW_NOTIFICATION', title);
-    e.waitUntil(
-      self.registration.showNotification(title || 'منتج جديد', {
-        body: body || 'تمت إضافة منتج جديد',
-        icon: './icon.png',
-        badge: './icon.png',
-        tag: tag || 'new-product',
-        vibrate: [200,100,200],
-        data: {url: './index.html'},
-        requireInteraction: false
-      }).catch(err=> console.warn('[SW] showNotification err', err.message))
-    );
+    console.log('[SW] SHOW_NOTIFICATION معطل V4.7');
+    // معطل — لا إشعارات
   }
   if(e.data && e.data.type==='SYNC_PRODUCTS'){
     if(e.data.supabaseUrl && e.data.supabaseKey){
@@ -321,45 +293,12 @@ self.addEventListener('message', e=>{
   }
 });
 
-// === Push API: استقبال Push من Firebase/Supabase حتى لو التطبيق مقفول ===
+// Push و notificationclick معطلة V4.7 — لا إشعارات
 self.addEventListener('push', e=>{
-  console.log('[SW] push received', e);
-  let payload = {title: 'منتج جديد', body: 'تمت إضافة منتج جديد'};
-  try{
-    if(e.data){
-      const j = e.data.json();
-      payload.title = j.title || j.notification?.title || payload.title;
-      payload.body = j.body || j.notification?.body || j.data?.name || payload.body;
-      if(j.data) payload.data = j.data;
-    }
-  }catch(err){
-    try{ payload.body = e.data.text(); }catch(_e){}
-  }
-  e.waitUntil(
-    self.registration.showNotification(payload.title, {
-      body: payload.body,
-      icon: './icon.png',
-      badge: './icon.png',
-      tag: 'push-product',
-      vibrate: [200,100,200],
-      data: payload.data || {url: './index.html'},
-      requireInteraction: false
-    })
-  );
+  console.log('[SW] push معطل');
 });
-
 self.addEventListener('notificationclick', e=>{
-  console.log('[SW] notification click', e.notification.tag);
-  e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || './index.html';
-  e.waitUntil(
-    clients.matchAll({type:'window', includeUncontrolled:true}).then(list=>{
-      for(const c of list){
-        if(c.url.includes('index.html') && 'focus' in c) return c.focus();
-      }
-      if(clients.openWindow) return clients.openWindow(url);
-    })
-  );
+  try{ e.notification.close(); }catch(err){}
 });
 
 self.addEventListener('periodicsync', e=>{
