@@ -1,28 +1,29 @@
 {
-  "version": "4.5",
-  "build": 81,
-  "date": "2026-09-14T12:56:47",
-  "notes": "إصلاح مزامنة GitHub OTA جذري + تحديث نظام الإشعارات V4.4 + إضافة local-notification CI - إصلاح هاش",
+  "version": "4.5.1",
+  "build": 82,
+  "date": "2026-09-14T13:04:29",
+  "notes": "تحديث CI patch - إصلاح Gradle 8 لدعم local-notification Badge في بناء APK السحابي",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "1556b15cf447499522157f9d0b2dc06f8714a4a7e97a783b3d738ad27099d19e",
+    "app.js": "8162e01db96bd1f5498617811df961d1621b9a6538232ae4ddad17a76543b209",
     "clear_cache.html": "bd4ad6bbd26800c0179ff18fdacf55de7f24101c6b1db2cb40fd7a127e8dab6e",
     "debug_supabase.html": "abacb753227f164259a902d396f75d54c11c0f6e0f569edeb5fda0382a87439c",
     "fcm_manager.js": "6081a58481e106f39faac93c50b0ac8aea57f42e3b1f58a4d0070d50a2024603",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
-    "index.html": "5f4b3ccc48619ea49e2bcae5b8b392d712c27191349738f170a309942ce62b8c",
+    "index.html": "562fa3ac3b3e96ff4e1c3bd90e99a2c55e6056c7fc2207501285a735bd2231cd",
     "manifest.json": "9efd63864d9b23c36eb2be6c054762f0fda7e3c6ca946064d6be411b60b5df26",
     "preview_notif.html": "29139a28d155a304be121ee9b1a2169be43671c08c6519367e34b53c49a289b2",
     "products.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
     "push_notifications.js": "82ed5778738e09b3f74029e3a299e4197afc470b24ca5b27d0e80933b814209e",
     "style.css": "c9daa829996470441ec8d62ec03ddb41bc4519292cff6f2378d632a3e0e9bf1a",
     "supabase_sync.js": "f785bbbd48cb317b458e7dcb2381773654511836ba7966072069ded08dfaf7f3",
-    "sw.js": "0dd5574cafa70c805190cf08c096780ef117e0027909d3097d569dab4134ffed",
-    "updater.js": "5ba4aa38cf59379ac8c2b861e828615dca3408adfa3691a48afca6b08cae76a0",
-    "version.json": "b0997146e5f2aab523c5af3fa753279964ac795962ca259d4b0fa4e77797e25a"
+    "sw.js": "51b3770485e7d46b38c6ad4f63ec9464f30ea809b30592b5a17777d97876c9e0",
+    "updater.js": "5dcb093eeaa2da14a14e8f35349ab430cb00a8c9e5a6a46b991d32dee8cad0ad",
+    "version.json": "ddd41d4e7534ed515aec7e699e092b77d83817da1139d1ec37889c7a5b05f84d"
   },
   "changelog": [
+    "4.5.1 - تحديث CI patch - إصلاح Gradle 8 لدعم local-notification Badge في بناء APK السحابي (2026-09-14)",
     "4.5 - إصلاح مزامنة GitHub OTA جذري + تحديث نظام الإشعارات V4.4 + إضافة local-notification CI - إصلاح هاش (2026-09-14)",
     "4.5 - إصلاح مزامنة GitHub OTA جذري + تحديث نظام الإشعارات V4.4 + إضافة local-notification CI (2026-09-14)",
     "4.4 - إصلاح جذري للإشعارات - V4.4 يعمل داخل وخارج التطبيق حتى لو مقفول - إضافة local notification + إصلاح SW config + تفعيل تلقائي (2026-09-14)",
@@ -41,7 +42,6 @@
     "3.26 - إصلاح جذري مزامنة دائمة + إشعارات خلفية + FCM + background fetch (2026-09-13)",
     "3.26 - إصلاح جذري مزامنة دائمة + إشعارات خلفية + FCM + background fetch (2026-09-13)",
     "3.25 - نظيف سحابي فقط متزامن - إصلاح تذبذب المزامنة + debug (2026-09-13)",
-    "3.24 - إضافة صفحة فحص Supabase لحل تذبذب المزامنة (2026-09-13)",
-    "3.23 - تثبيت حالة المزامنة: منع تذبذب جاري/غير متصل - سحابة فقط (2026-09-13)"
+    "3.24 - إضافة صفحة فحص Supabase لحل تذبذب المزامنة (2026-09-13)"
   ]
 }

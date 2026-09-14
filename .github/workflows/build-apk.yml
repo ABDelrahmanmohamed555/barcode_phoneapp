@@ -82,6 +82,19 @@ jobs:
         working-directory: ./protPhone
         run: cordova prepare android
 
+      - name: Patch Gradle for local-notification/badge (fix compile→implementation for Gradle 8)
+        working-directory: ./protPhone
+        run: |
+          echo "Patching gradle files for Gradle 8 compatibility"
+          for f in platforms/android/cordova-plugin-badge/cashier-badge.gradle platforms/android/cordova-plugin-local-notification/cashier-localnotification.gradle; do
+            if [ -f "$f" ]; then
+              sed -i 's/compile "me.leolin/implementation "me.leolin/' "$f"
+              echo "patched $f"
+              cat "$f" | grep -n implementation || true
+            fi
+          done
+          cat platforms/android/cdv-gradle-config.json | grep COMPILE || true
+
       - name: Build APK
         working-directory: ./protPhone
         run: cordova build android --debug -- --packageType=apk

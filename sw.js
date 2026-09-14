@@ -1,6 +1,6 @@
 // sw.js — Service Worker V4.4 — إصلاح إشعارات جذري + مزامنة خلفية ذاتية
 const CACHE_PREFIX = 'nahal-ota-';
-let CURRENT_CACHE = CACHE_PREFIX + 'v4.5';
+let CURRENT_CACHE = CACHE_PREFIX + 'v4.5.1';
 
 // إعدادات Supabase الافتراضية — fallback حتى قبل وصول SYNC_CONFIG من الصفحة
 const DEFAULT_SUPA_URL = 'https://vseycanfadblfmkevoqe.supabase.co';
@@ -29,7 +29,7 @@ function compareVer(a,b){
   return 0;
 }
 self.addEventListener('install', e=>{
-  console.log('[SW 4.5] install');
+  console.log('[SW 4.5.1] install');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(keys.filter(k=>{
       if(!k.startsWith(CACHE_PREFIX)) return false;
@@ -45,7 +45,7 @@ self.addEventListener('install', e=>{
 });
 
 self.addEventListener('activate', e=>{
-  console.log('[SW 4.5] activate');
+  console.log('[SW 4.5.1] activate');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(
       keys.filter(k=>{
