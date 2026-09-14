@@ -1,17 +1,21 @@
-// fcm_manager.js — إدارة FCM Token + إرساله لـ Supabase — مُصلح للعمل الدائم
+// fcm_manager.js — إدارة FCM Token + إرساله لـ Supabase — V4.4 مُصلح
 // يدعم Cordova (APK) عبر cordova-plugin-firebasex، و PWA عبر Web Push كـ fallback
-// يتضمن: قناة إشعارات أندرويد + إذن POST_NOTIFICATIONS + حفظ تلقائي + إعادة محاولة
-
+// V4.4: fallback لـ local notification عند غياب FirebasePlugin + إنشاء قناة موحدة + تسجيل تلقائي
 (function(){
   const TABLE_TOKENS = 'fcm_tokens';
 
   function isCordova(){
     return !!(window.cordova && window.FirebasePlugin);
   }
+  function hasCordovaLocal(){
+    return !!(window.cordova && window.cordova.plugins && window.cordova.plugins.notification && window.cordova.plugins.notification.local);
+  }
+  function isAnyCordova(){
+    return !!(window.cordova);
+  }
 
   async function saveTokenToSupabase(token){
     if(!token) return;
-    // انتظر SupabaseSync إن لم يكن جاهزاً
     let tries=0;
     while((!window.SupabaseSync || !SupabaseSync.isConfigured()) && tries<8){
       await new Promise(r=>setTimeout(r, 800));
@@ -28,7 +32,7 @@
       const payload = {
         token: token,
         device_id: deviceId,
-        platform: isCordova() ? 'android' : 'web',
+        platform: isCordova() ? 'android-fcm' : (hasCordovaLocal() ? 'android-local' : 'web'),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -51,7 +55,6 @@
         const txt = await r.text().catch(()=> '');
         console.warn('[FCM] فشل حفظ التوكن', r.status, txt.slice(0,120));
         localStorage.setItem('fcm_token_pending', token);
-        // لو الجدول غير موجود (PGRST205) اطبع تعليمات
         if(txt.includes('Could not find') || txt.includes('PGRST')){
           console.warn('[FCM] تأكد من تنفيذ supabase_fcm_setup.sql في Supabase');
         }
@@ -72,29 +75,81 @@
   }
 
   async function ensureAndroidChannel(){
-    if(!isCordova()) return;
+    // حاول FirebasePlugin أولاً
+    if(isCordova()){
+      try{
+        if(window.FirebasePlugin.createChannel){
+          window.FirebasePlugin.createChannel({
+            id: "nahal-products",
+            name: "منتجات النحال",
+            description: "إشعارات المنتجات الجديدة والتحديثات",
+            importance: 4,
+            visibility: 1,
+            sound: "default",
+            vibration: true,
+            lights: true,
+            lightColor: "#c8943a"
+          }, ()=> console.log('[FCM] Firebase channel created'), (e)=> console.warn('[FCM] Firebase channel fail', e));
+        }
+      }catch(e){ console.warn('[FCM] Firebase channel err', e.message); }
+    }
+    // وحاول local notification channel
+    if(hasCordovaLocal()){
+      try{
+        const local = window.cordova.plugins.notification.local;
+        if(local.createChannel){
+          local.createChannel({
+            id: 'nahal-products',
+            name: 'منتجات النحال',
+            description: 'إشعارات المنتجات الجديدة',
+            importance: 4,
+            visibility: 1,
+            sound: 'default',
+            vibration: true
+          });
+          console.log('[FCM] Local channel created');
+        }
+      }catch(e){ console.warn('[FCM] Local channel err', e.message); }
+    }
+  }
+
+  // fallback: لو لا يوجد FirebasePlugin لكن يوجد Cordova، استخدم local notification كبديل
+  // وأيضاً ولّد توكن وهمي للتمييز (device_id) وحاول حفظه
+  async function initCordovaFallback(){
+    if(!isAnyCordova()) return false;
+    if(isCordova()) return initCordovaFCM(); // Firebase موجود
+    // لا يوجد Firebase — استخدم local notification فقط
+    console.log('[FCM] FirebasePlugin غير موجود — استخدام local notification fallback');
+    await ensureAndroidChannel();
+    // اطلب إذن local notification
+    if(hasCordovaLocal()){
+      try{
+        const local = window.cordova.plugins.notification.local;
+        local.hasPermission((granted)=>{
+          if(!granted){
+            local.requestPermission((g2)=>{
+              console.log('[FCM] local permission', g2);
+              if(g2) localStorage.setItem('notif_enabled','1');
+            });
+          } else {
+            localStorage.setItem('notif_enabled','1');
+          }
+        });
+      }catch(e){}
+    }
+    // ولّد توكن وهمي للسجل (ليس FCM حقيقي لكن يفيد في التتبع)
     try{
-      // إنشاء قناة إشعارات أندرويد 8+ — ضرورية لظهور الإشعارات
-      if(window.FirebasePlugin.createChannel){
-        window.FirebasePlugin.createChannel({
-          id: "nahal-products",
-          name: "منتجات النحال",
-          description: "إشعارات المنتجات الجديدة والتحديثات",
-          importance: 4, // HIGH
-          visibility: 1,
-          sound: "default",
-          vibration: true,
-          lights: true,
-          lightColor: "#c8943a"
-        }, ()=> console.log('[FCM] channel created'), (e)=> console.warn('[FCM] channel fail', e));
-      }
-    }catch(e){ console.warn('[FCM] channel err', e.message); }
+      const fakeToken = 'local_' + getDeviceId() + '_' + Date.now();
+      // لا نحفظه في fcm_tokens لأنه ليس FCM، لكن نحفظ device_id فقط للتمييز
+      console.log('[FCM] local mode — device', getDeviceId());
+    }catch(e){}
+    return true;
   }
 
   async function initCordovaFCM(){
     if(!isCordova()){
-      console.log('[FCM] ليس Cordova — تخطي FirebasePlugin');
-      return false;
+      console.log('[FCM] ليس Cordova FirebasePlugin — fallback local');
+      return initCordovaFallback();
     }
     await ensureAndroidChannel();
     return new Promise((resolve)=>{
@@ -108,7 +163,8 @@
               fetchToken();
             }, (err)=>{
               console.warn('[FCM] رفض الإذن', err);
-              resolve(false);
+              // حتى لو رفض، حاول fallback local
+              initCordovaFallback().then(()=> resolve(false));
             });
           }
         });
@@ -123,7 +179,6 @@
             resolve(false);
           });
 
-          // تحديث التوكن
           try{
             window.FirebasePlugin.onTokenRefresh((newToken)=>{
               console.log('[FCM] token refresh', newToken.slice(0,20)+'...');
@@ -131,7 +186,6 @@
             }, (err)=> console.warn('[FCM] onTokenRefresh fail', err));
           }catch(e){}
 
-          // استقبال الرسائل في المقدمة
           try{
             window.FirebasePlugin.onMessageReceived((msg)=>{
               console.log('[FCM] message received', msg);
@@ -157,29 +211,35 @@
   }
 
   async function initWebPush(){
-    if(isCordova()) return;
+    if(isCordova() || hasCordovaLocal()) return;
     if(!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-    console.log('[FCM] Web Push ready — سيتم استخدام الإشعارات المحلية + PeriodicSync كبديل (FCM Web يحتاج VAPID)');
-    // لا حاجة لـ VAPID حالياً — PWA يعتمد على periodicSync + SW autonomous
+    console.log('[FCM] Web Push ready — سيتم استخدام الإشعارات المحلية + PeriodicSync كبديل');
   }
 
   function init(){
     const pending = localStorage.getItem('fcm_token_pending');
     if(pending){
       setTimeout(()=> saveTokenToSupabase(pending), 2500);
-      // حاول كل 30ث
       setInterval(()=>{ const p=localStorage.getItem('fcm_token_pending'); if(p) saveTokenToSupabase(p); }, 30000);
     }
     if(window.cordova){
       document.addEventListener('deviceready', ()=>{
         console.log('[FCM] deviceready');
-        setTimeout(initCordovaFCM, 1200);
+        setTimeout(()=>{
+          if(isCordova()) initCordovaFCM();
+          else initCordovaFallback();
+        }, 1200);
       }, false);
       if(window.FirebasePlugin){
-        setTimeout(initCordovaFCM, 2000);
+        setTimeout(()=> initCordovaFCM(), 2000);
+      } else {
+        // fallback بعد 2 ث
+        setTimeout(()=> initCordovaFallback(), 2000);
       }
-      // أيضاً بعد 5ث كـ fallback
-      setTimeout(()=>{ if(isCordova()) initCordovaFCM().catch(()=>{}); }, 5000);
+      setTimeout(()=>{
+        if(isCordova()) initCordovaFCM().catch(()=>{});
+        else initCordovaFallback().catch(()=>{});
+      }, 5000);
     } else {
       if(document.readyState==='loading'){
         document.addEventListener('DOMContentLoaded', ()=> setTimeout(initWebPush, 1500));
@@ -188,10 +248,15 @@
   }
 
   window.FCMManager = {
-    init: initCordovaFCM,
+    init: isCordova() ? initCordovaFCM : initCordovaFallback,
+    initCordovaFCM,
+    initCordovaFallback,
     saveTokenToSupabase,
     isCordova,
-    getDeviceId
+    hasCordovaLocal,
+    isAnyCordova,
+    getDeviceId,
+    ensureAndroidChannel
   };
 
   if(document.readyState === 'loading'){
@@ -201,5 +266,5 @@
   }
   document.addEventListener('deviceready', init, false);
 
-  console.log('[FCM] manager loaded — cordova:', isCordova());
+  console.log('[FCM] manager V4.4 loaded — cordova:', isAnyCordova(), 'firebase:', isCordova(), 'local:', hasCordovaLocal());
 })();

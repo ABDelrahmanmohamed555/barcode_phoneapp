@@ -1,7 +1,10 @@
-// sw.js — Service Worker V2 — يدعم OTA سحابي 100% (أيقونة/اسم/HTML جذري)
+// sw.js — Service Worker V4.4 — إصلاح إشعارات جذري + مزامنة خلفية ذاتية
 const CACHE_PREFIX = 'nahal-ota-';
-let CURRENT_CACHE = CACHE_PREFIX + 'v4.3';
-// نسخة سحابية قد تُحدث عبر postMessage UPDATE_CACHE
+let CURRENT_CACHE = CACHE_PREFIX + 'v4.4';
+
+// إعدادات Supabase الافتراضية — fallback حتى قبل وصول SYNC_CONFIG من الصفحة
+const DEFAULT_SUPA_URL = 'https://vseycanfadblfmkevoqe.supabase.co';
+const DEFAULT_SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzZXljYW5mYWRibGZta2V2b3FlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODk0Mzk4NywiZXhwIjoyMTA0NTE5OTg3fQ.XX6gBLx6t5exMwk0xqnOY8nMSZ00oHq9qdj2jdo223g';
 
 const ASSETS = [
   './',
@@ -13,6 +16,8 @@ const ASSETS = [
   './version.json',
   './updater.js',
   './supabase_sync.js',
+  './push_notifications.js',
+  './fcm_manager.js',
   './clear_cache.html'
 ];
 
@@ -24,12 +29,11 @@ function compareVer(a,b){
   return 0;
 }
 self.addEventListener('install', e=>{
-  console.log('[SW 4.3] install - OTA V2 responsive');
+  console.log('[SW 4.4] install');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(keys.filter(k=>{
       if(!k.startsWith(CACHE_PREFIX)) return false;
       if(k===CURRENT_CACHE) return false;
-      // احذف فقط الكاش الأقدم من الحالي — احتفظ بالأحدث (OTA مستقبلي)
       try{
         const vOld=k.replace(CACHE_PREFIX,'');
         const vCur=CURRENT_CACHE.replace(CACHE_PREFIX,'');
@@ -41,7 +45,7 @@ self.addEventListener('install', e=>{
 });
 
 self.addEventListener('activate', e=>{
-  console.log('[SW 4.3] activate');
+  console.log('[SW 4.4] activate');
   e.waitUntil(
     caches.keys().then(keys=> Promise.all(
       keys.filter(k=>{
@@ -59,10 +63,7 @@ self.addEventListener('activate', e=>{
 
 self.addEventListener('fetch', e=>{
   const url = new URL(e.request.url);
-  // === إصلاح جذري: لا تلمس أبداً طلبات Supabase / Realtime / API خارجية — دعها تمر مباشرة للشبكة ===
-  // هذه الطلبات يجب ألا تُخزن في Cache أبداً وإلا ترجع بيانات قديمة وتفشل المزامنة
   if(url.hostname.includes('supabase.co') || url.hostname.includes('supabase.') || url.pathname.includes('/rest/v1/') || url.pathname.includes('/realtime/') || url.pathname.includes('/auth/v1/')){
-    // Network only — لا cache ولا fallback
     e.respondWith(fetch(e.request, {cache:'no-store'}).catch(()=> new Response(JSON.stringify([]), {status: 503, headers:{'Content-Type':'application/json'}})));
     return;
   }
@@ -70,21 +71,16 @@ self.addEventListener('fetch', e=>{
     e.respondWith(fetch(e.request, {cache:'no-store'}).catch(()=> caches.match(e.request)));
     return;
   }
-  // version.json دائماً من الشبكة
   if(url.pathname.endsWith('version.json')){
     e.respondWith(fetch(e.request, {cache:'no-store'}).catch(()=> caches.match(e.request)));
     return;
   }
-  // OTA cache أولاً: لو الملف موجود في أي ota-v* cache أرجعه مباشرة (سحابي 100%)
-  // هذا يسمح بتحديث جذري حتى لو الشبكة مقطوعة بعد OTA
   const otaMatch = caches.keys().then(keys=>{
     const otaKeys=keys.filter(k=>k.startsWith(CACHE_PREFIX));
-    // ابحث من الأحدث للأقدم
     otaKeys.sort((a,b)=> compareVer(b.replace(CACHE_PREFIX,''), a.replace(CACHE_PREFIX,'')));
     return Promise.all(otaKeys.map(k=> caches.open(k).then(c=> c.match(e.request)))).then(results=> results.find(r=>r) || null);
   });
-  // كل ملفات JS/CSS/HTML/manifest/icon دائماً network first لكن مع fallback لـ OTA cache ثم cache العادي
-  if(url.pathname.match(/(app\.js|supabase_sync\.js|updater\.js|index\.html|clear_cache\.html|style\.css|manifest\.json|icon\.png)$/)){
+  if(url.pathname.match(/(app\.js|supabase_sync\.js|updater\.js|push_notifications\.js|fcm_manager\.js|index\.html|clear_cache\.html|style\.css|manifest\.json|icon\.png)$/)){
     e.respondWith(
       fetch(e.request, {cache:'no-store'}).then(resp=>{
         if(resp.ok){
@@ -96,10 +92,8 @@ self.addEventListener('fetch', e=>{
     );
     return;
   }
-  // الباقي: network first ثم OTA cache ثم cache — لكن لا تخزن أبداً طلبات API خارجية
   e.respondWith(
     fetch(e.request, {cache:'no-store'}).then(resp=>{
-      // لا تخزن طلبات API/JSON ديناميكية — فقط أصول ثابتة
       const ct = resp.headers.get('Content-Type') || '';
       const isApi = ct.includes('application/json') && !url.pathname.endsWith('version.json') && !url.pathname.endsWith('manifest.json');
       if(resp.ok && !isApi){
@@ -115,7 +109,7 @@ self.addEventListener('fetch', e=>{
 let _bgSupaUrl = null;
 let _bgSupaKey = null;
 let _bgLastCount = null;
-let _bgLastBarcodes = null; // Set serialized
+let _bgLastBarcodes = null;
 const BG_DB = 'nahal-bg-sync';
 const BG_STORE = 'state';
 function _bgIDB(){
@@ -135,7 +129,8 @@ async function _bgSaveConfig(url, key){
     const tx = db.transaction(BG_STORE,'readwrite');
     tx.objectStore(BG_STORE).put(url, 'supa_url');
     tx.objectStore(BG_STORE).put(key, 'supa_key');
-  }catch(e){}
+    console.log('[SW BG] config saved', url.slice(0,30));
+  }catch(e){ console.warn('[SW BG] save config fail', e.message); }
 }
 async function _bgLoadConfig(){
   if(_bgSupaUrl && _bgSupaKey) return {url:_bgSupaUrl, key:_bgSupaKey};
@@ -149,7 +144,14 @@ async function _bgLoadConfig(){
     const u = await get('supa_url');
     const k = await get('supa_key');
     if(u && k){ _bgSupaUrl=u; _bgSupaKey=k; return {url:u,key:k}; }
-  }catch(e){}
+  }catch(e){ console.warn('[SW BG] load IDB fail', e.message); }
+  // fallback للافتراضي — يضمن عمل الخلفية حتى قبل أول رسالة SYNC_CONFIG
+  if(DEFAULT_SUPA_URL && DEFAULT_SUPA_KEY){
+    console.log('[SW BG] use DEFAULT config');
+    _bgSupaUrl = DEFAULT_SUPA_URL;
+    _bgSupaKey = DEFAULT_SUPA_KEY;
+    return {url: DEFAULT_SUPA_URL, key: DEFAULT_SUPA_KEY};
+  }
   return null;
 }
 async function _bgGetLastState(){
@@ -177,15 +179,39 @@ async function _bgFetchAndNotify(){
   const cfg = await _bgLoadConfig();
   if(!cfg || !cfg.url || !cfg.key){
     console.log('[SW BG] لا يوجد إعداد Supabase — محاولة جلب من clients');
-    // حاول طلب الإعداد من أي نافذة مفتوحة
     try{
       const clientsList = await clients.matchAll({type:'window', includeUncontrolled:true});
       if(clientsList.length>0){
         clientsList[0].postMessage({type:'REQUEST_SYNC_CONFIG'});
-        // fallback: اطلب مزامنة عبر العميل
         clientsList[0].postMessage({type:'DO_BG_SYNC'});
+      } else {
+        console.log('[SW BG] لا يوجد clients — استخدام DEFAULT');
+        // حاول مرة أخرى مع DEFAULT
+        if(DEFAULT_SUPA_URL){
+          const r = await fetch(DEFAULT_SUPA_URL + '/rest/v1/products?select=*&order=id.desc', {
+            headers:{'apikey': DEFAULT_SUPA_KEY, 'Authorization':'Bearer '+DEFAULT_SUPA_KEY},
+            cache:'no-store'
+          });
+          if(r.ok){
+            const data = await r.json();
+            if(Array.isArray(data)){
+              const newCount=data.length;
+              const newBarcodes=JSON.stringify(data.map(p=>p.barcode).sort());
+              const last=await _bgGetLastState();
+              if(last.count===null){ await _bgSaveLastState(newCount,newBarcodes); return; }
+              if(newCount>last.count && newBarcodes!==last.barcodes){
+                const diff=newCount-last.count;
+                const title=diff===1?'منتج جديد ✓':`${diff} منتجات جديدة ✓`;
+                const body=diff===1?`${data[0]?.name||'منتج'} — تمت إضافته`:`${data.slice(0,diff).map(p=>p.name).slice(0,2).join('، ')}`;
+                await self.registration.showNotification(title,{body,icon:'./icon.png',badge:'./icon.png',tag:'new-product-'+Date.now(),vibrate:[200,100,200],data:{url:'./index.html'}}).catch(()=>{});
+                console.log('[SW BG] notify via DEFAULT', diff);
+              }
+              await _bgSaveLastState(newCount,newBarcodes);
+            }
+          }
+        }
       }
-    }catch(e){}
+    }catch(e){ console.log('[SW BG] fallback fail', e.message); }
     return;
   }
   try{
@@ -210,7 +236,6 @@ async function _bgFetchAndNotify(){
       try{ names = data.slice(0, diff).map(p=> p.name).slice(0,2).join('، '); }catch(e){}
       const title = diff===1 ? 'منتج جديد ✓' : `${diff} منتجات جديدة ✓`;
       const body = diff===1 ? `${data[0]?.name||'منتج'} — تمت إضافته` : `${names}${diff>2?' ...':''}`;
-      // لا ترسل لو diff من نفس الجلسة الذاتية — قارن الباركود
       if(newBarcodes !== last.barcodes){
         await self.registration.showNotification(title, {
           body: body,
@@ -220,21 +245,17 @@ async function _bgFetchAndNotify(){
           vibrate: [200,100,200],
           data: {url: './index.html'},
           requireInteraction: false
-        }).catch(()=>{});
-        console.log('[SW BG] إشعار منتج جديد', diff);
-        // أيضاً أبلغ العملاء المفتوحين لتحديث الواجهة
+        }).catch(e=> console.warn('[SW BG] showNotif fail', e.message));
+        console.log('[SW BG] إشعار منتج جديد', diff, title);
         try{
           const cl = await clients.matchAll({type:'window', includeUncontrolled:true});
           cl.forEach(c=> c.postMessage({type:'BG_PRODUCTS_UPDATED', count:newCount}));
         }catch(e){}
       }
     } else if(newCount < last.count){
-      // حذف — حدث العداد بدون إشعار صاخب
       console.log('[SW BG] حذف', last.count,'->',newCount);
     } else {
-      // نفس العدد لكن قد يكون تعديل سعر/اسم — قارن الباركود هاش
       if(newBarcodes !== last.barcodes){
-        // تغييرات في القائمة (استبدال) — قد تكون تعديلات
         const oldSet = new Set(JSON.parse(last.barcodes||'[]'));
         const newSet = new Set(data.map(p=>p.barcode));
         const added = [...newSet].filter(x=> !oldSet.has(x));
@@ -244,6 +265,13 @@ async function _bgFetchAndNotify(){
             body: `${prod?.name||added[0]} — تمت إضافته`,
             icon:'./icon.png', badge:'./icon.png', tag:'new-product-'+Date.now(), vibrate:[200,100,200], data:{url:'./index.html'}
           }).catch(()=>{});
+          console.log('[SW BG] notify added via barcode diff', added[0]);
+        } else {
+          // تعديل سعر/اسم بدون تغيير عدد — نبه أيضاً
+          try{
+            const cl2 = await clients.matchAll({type:'window', includeUncontrolled:true});
+            if(cl2.length>0) cl2.forEach(c=> c.postMessage({type:'BG_PRODUCTS_UPDATED', count:newCount}));
+          }catch(e){}
         }
       }
     }
@@ -263,16 +291,15 @@ self.addEventListener('message', e=>{
   if(e.data && e.data.type==='NUKE_ALL'){
     e.waitUntil(caches.keys().then(keys=> Promise.all(keys.map(k=> caches.delete(k)))));
   }
-  // حفظ إعدادات Supabase للمزامنة الذاتية
   if(e.data && e.data.type==='SYNC_CONFIG'){
     e.waitUntil(_bgSaveConfig(e.data.url, e.data.key));
   }
   if(e.data && e.data.type==='SET_BG_STATE'){
     e.waitUntil(_bgSaveLastState(e.data.count, e.data.barcodes));
   }
-  // === واتساب: استقبال طلب إظهار إشعار من الصفحة (Realtime) ===
   if(e.data && e.data.type==='SHOW_NOTIFICATION'){
     const {title, body, tag} = e.data;
+    console.log('[SW] SHOW_NOTIFICATION', title);
     e.waitUntil(
       self.registration.showNotification(title || 'منتج جديد', {
         body: body || 'تمت إضافة منتج جديد',
@@ -282,10 +309,9 @@ self.addEventListener('message', e=>{
         vibrate: [200,100,200],
         data: {url: './index.html'},
         requireInteraction: false
-      })
+      }).catch(err=> console.warn('[SW] showNotification err', err.message))
     );
   }
-  // مزامنة في الخلفية (Background Sync) — الآن ذاتية + fallback
   if(e.data && e.data.type==='SYNC_PRODUCTS'){
     if(e.data.supabaseUrl && e.data.supabaseKey){
       e.waitUntil(_bgSaveConfig(e.data.supabaseUrl, e.data.supabaseKey).then(()=> _bgFetchAndNotify()));
@@ -336,12 +362,10 @@ self.addEventListener('notificationclick', e=>{
   );
 });
 
-// === Periodic Background Sync (ذاتي 100% حتى لو التطبيق مقفول) ===
 self.addEventListener('periodicsync', e=>{
   if(e.tag === 'sync-products'){
     console.log('[SW] periodicsync', e.tag);
     e.waitUntil(_bgFetchAndNotify().then(()=>{
-      // أيضاً حاول إبلاغ العملاء إن وجدوا
       return clients.matchAll({type:'window'}).then(list=>{
         list.forEach(c=> c.postMessage({type:'DO_BG_SYNC'}));
       });

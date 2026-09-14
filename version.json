@@ -1,27 +1,29 @@
 {
-  "version": "4.3",
-  "build": 78,
-  "date": "2026-09-13T22:21:23",
-  "notes": "إصلاح الإشعارات خارج التطبيق - SW بدون Notification API",
+  "version": "4.4",
+  "build": 79,
+  "date": "2026-09-14T12:45:53",
+  "notes": "إصلاح جذري للإشعارات - V4.4 يعمل داخل وخارج التطبيق حتى لو مقفول - إضافة local notification + إصلاح SW config + تفعيل تلقائي",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "172efe8028ffda4026c51b8fe03118f2d7f3718c41cc52f6a791e18269083dde",
+    "app.js": "6e4132f1131905b6bb75f40f23046b4d9b6cb65cdb10c43d566ebc10ce218943",
     "clear_cache.html": "bd4ad6bbd26800c0179ff18fdacf55de7f24101c6b1db2cb40fd7a127e8dab6e",
     "debug_supabase.html": "abacb753227f164259a902d396f75d54c11c0f6e0f569edeb5fda0382a87439c",
-    "fcm_manager.js": "5c91f4d8705ea0846e030df2f2490ca6bb4a5dfb9389ae649d2cb13b7e1dcc6e",
+    "fcm_manager.js": "6081a58481e106f39faac93c50b0ac8aea57f42e3b1f58a4d0070d50a2024603",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
-    "index.html": "5b493e9c1d6fb9f41fa2a22a08ae8ec8e74027809b5386646060d215667dc2b8",
+    "index.html": "6784644d3284142533fa076abf8779a84936b1960966e137d395029593b9e672",
     "manifest.json": "9efd63864d9b23c36eb2be6c054762f0fda7e3c6ca946064d6be411b60b5df26",
+    "preview_notif.html": "29139a28d155a304be121ee9b1a2169be43671c08c6519367e34b53c49a289b2",
     "products.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "push_notifications.js": "4a9a62834142fc756ecce6f223aae0ed32236e44eb1e9e6298fd60b9cebed666",
+    "push_notifications.js": "82ed5778738e09b3f74029e3a299e4197afc470b24ca5b27d0e80933b814209e",
     "style.css": "c9daa829996470441ec8d62ec03ddb41bc4519292cff6f2378d632a3e0e9bf1a",
     "supabase_sync.js": "f785bbbd48cb317b458e7dcb2381773654511836ba7966072069ded08dfaf7f3",
-    "sw.js": "74457c4cb4b1f5340962bf2c8712db0987530861a884f158885d0f12549bc11d",
-    "updater.js": "dd7e13719b1674b1022767f4cf182d895f5c81395666502c6f9bb89a1daeec49",
-    "version.json": "ac4d33eaa40db95d4b6e4b39c8f6c266276972418ca1a4345cc67e080adb40d7"
+    "sw.js": "97c074ba1e153874a536ff9c1a991e26d03d501969456269d46c599fffad5ce2",
+    "updater.js": "d0ad623f427314f115e4bd378e8d2f981b773563591530e3dec620ce547e6386",
+    "version.json": "bc15fce95c1afd0a64f53d5dcdbc031027b9aa2dc9daae99e487295b62eaf0a9"
   },
   "changelog": [
+    "4.4 - إصلاح جذري للإشعارات - V4.4 يعمل داخل وخارج التطبيق حتى لو مقفول - إضافة local notification + إصلاح SW config + تفعيل تلقائي (2026-09-14)",
     "4.3 - إصلاح الإشعارات خارج التطبيق - SW بدون Notification API (2026-09-13)",
     "4.3 - إصلاح الإشعارات خارج التطبيق - دعم Cordova local notification + حل رسالة المتصفح لا يدعم (2026-09-13)",
     "4.2 - إضافة FCM للإشعارات الفورية وهو مقفول - مع الحفاظ على مزامنة Supabase المستقرة (2026-09-13)",
@@ -40,7 +42,6 @@
     "3.24 - إضافة صفحة فحص Supabase لحل تذبذب المزامنة (2026-09-13)",
     "3.23 - تثبيت حالة المزامنة: منع تذبذب جاري/غير متصل - سحابة فقط (2026-09-13)",
     "3.22 - سحابة فقط: حذف المزامنة المحلية نهائياً + إبقاء الإشعارات (2026-09-13)",
-    "3.21 - إصلاح crash Firebase - إشعارات محلية مستقرة بدون FCM (2026-09-13)",
-    "3.20 - إضافة FCM واتساب: google-services + firebasex + fcm_manager + push SW (2026-09-13)"
+    "3.21 - إصلاح crash Firebase - إشعارات محلية مستقرة بدون FCM (2026-09-13)"
   ]
 }

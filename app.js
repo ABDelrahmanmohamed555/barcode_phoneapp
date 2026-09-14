@@ -1,4 +1,4 @@
-// phone app/app.js — مزامنة جديدة فقط عبر Supabase — نسخة 3.3 نظيفة
+// phone app/app.js — مزامنة جديدة فقط عبر Supabase — نسخة 4.4 إصلاح إشعارات جذري
 // السحابة هي المصدر الوحيد — لا منتجات قديمة، لا كاش قديم، لا migration
 // تم مسح كل ما يخص المنتجات القديمة والتعارضات
 
@@ -828,28 +828,72 @@ const scanEl=document.getElementById('scan');
 if(scanEl) scanEl.addEventListener('keydown', e=>{ if(e.key==='Enter') scanEnter(); });
 genBarcode(); renderTable(); renderUserTable(); renderPricingTable(); if(typeof renderCart==='function') renderCart();
 // عرض فوري للكاش المحلي — يظهر مزامن بالأزرق حتى قبل وصول السحابة
-// === إرسال إعدادات Supabase إلى SW للمزامنة الذاتية ===
+// === إرسال إعدادات Supabase إلى SW للمزامنة الذاتية — V4.4 مُصلح جذري (يعيد المحاولة حتى ينجح) ===
 function _sendConfigToSW(){
   try{
-    if(!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
-    if(!window.SupabaseSync || !SupabaseSync.getConfig) return;
+    if(!navigator.serviceWorker) return false;
+    if(!window.SupabaseSync || !SupabaseSync.getConfig) return false;
     const cfg = SupabaseSync.getConfig();
-    if(cfg && cfg.url && cfg.key){
-      navigator.serviceWorker.controller.postMessage({type:'SYNC_CONFIG', url: cfg.url, key: cfg.key});
-      console.log('[SYNC-CONFIG] أرسلت إعدادات Supabase إلى SW');
-    }
-  }catch(e){ console.warn('[SYNC-CONFIG] fail', e.message); }
+    if(!cfg || !cfg.url || !cfg.key) return false;
+    let sent=false;
+    // 1) عبر controller إن وجد
+    try{
+      if(navigator.serviceWorker.controller){
+        navigator.serviceWorker.controller.postMessage({type:'SYNC_CONFIG', url: cfg.url, key: cfg.key});
+        console.log('[SYNC-CONFIG] أرسلت عبر controller');
+        sent=true;
+      }
+    }catch(e){}
+    // 2) عبر ready.active كـ fallback (مهم عند أول تحميل قبل سيطرة SW)
+    try{
+      navigator.serviceWorker.ready.then(reg=>{
+        if(reg && reg.active){
+          try{ reg.active.postMessage({type:'SYNC_CONFIG', url: cfg.url, key: cfg.key}); console.log('[SYNC-CONFIG] أرسلت عبر ready.active'); sent=true; }catch(e){}
+        }
+        // أيضاً عبر getRegistration
+        navigator.serviceWorker.getRegistration().then(r=>{
+          if(r && r.active && r.active!==reg.active){
+            try{ r.active.postMessage({type:'SYNC_CONFIG', url: cfg.url, key: cfg.key}); }catch(e){}
+          }
+        }).catch(()=>{});
+      }).catch(()=>{});
+      if(sent) return true;
+      // إذا لم يكن هناك controller بعد، سنعيد المحاولة
+      if(!navigator.serviceWorker.controller){
+        console.log('[SYNC-CONFIG] لا يوجد controller — سيعاد بعد 1.5ث');
+        setTimeout(_sendConfigToSW, 1500);
+        return false;
+      }
+    }catch(e){}
+    return sent;
+  }catch(e){ console.warn('[SYNC-CONFIG] fail', e.message); return false; }
 }
 function _updateSWBgState(){
   try{
-    if(!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+    if(!navigator.serviceWorker) return;
     const barcodes = JSON.stringify(products.map(p=>p.barcode).sort());
-    navigator.serviceWorker.controller.postMessage({type:'SET_BG_STATE', count: products.length, barcodes: barcodes});
+    const count = products.length;
+    let sent=false;
+    try{
+      if(navigator.serviceWorker.controller){
+        navigator.serviceWorker.controller.postMessage({type:'SET_BG_STATE', count: count, barcodes: barcodes});
+        sent=true;
+      }
+    }catch(e){}
+    try{
+      navigator.serviceWorker.ready.then(reg=>{
+        if(reg && reg.active) reg.active.postMessage({type:'SET_BG_STATE', count: count, barcodes: barcodes});
+      }).catch(()=>{});
+    }catch(e){}
+    if(!sent && !navigator.serviceWorker.controller){
+      // أجل لما يجهز
+      setTimeout(_updateSWBgState, 1200);
+    }
   }catch(e){}
 }
-// حاول إرسال الإعداد عند جاهزية SW
+// حاول إرسال الإعداد عند جاهزية SW — مع إعادة محاولة
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.ready.then(()=> setTimeout(_sendConfigToSW, 800)).catch(()=>{});
+  navigator.serviceWorker.ready.then(()=> { setTimeout(_sendConfigToSW, 800); setTimeout(_sendConfigToSW, 2500); }).catch(()=>{});
   navigator.serviceWorker.addEventListener('controllerchange', ()=> setTimeout(_sendConfigToSW, 500));
   // استقبال طلب الإعداد من SW
   navigator.serviceWorker.addEventListener('message', e=>{
@@ -863,6 +907,14 @@ if('serviceWorker' in navigator){
       syncFromApi({force:true});
     }
   });
+  // إعادة إرسال دورية لضمان الخلفية (كل 20 ثانية لأول دقيقة)
+  let _cfgRetries=0;
+  const _cfgInterval=setInterval(()=>{
+    _cfgRetries++;
+    _sendConfigToSW();
+    _updateSWBgState();
+    if(_cfgRetries>=3) clearInterval(_cfgInterval);
+  }, 5000);
 }
 // Periodic Background Sync registration (PWA)
 async function _registerPeriodicSyncApp(){
@@ -913,6 +965,18 @@ document.addEventListener('deviceready', ()=>{
   setTimeout(_initCordovaBackgroundFetch, 1500);
   setTimeout(_registerPeriodicSyncApp, 2000);
   setTimeout(_sendConfigToSW, 1000);
+  setTimeout(_sendConfigToSW, 3500);
+  // تفعيل الإشعارات تلقائياً عند deviceready لو لم تكن مفعلة
+  setTimeout(()=>{
+    try{
+      if(window.NotifManager && !localStorage.getItem('notif_enabled')){
+        console.log('[BOOT] محاولة تفعيل إشعارات تلقائية');
+        // لا نطلبه فوراً — ننتظر إذن المستخدم عبر زر أو auto في push_notifications.js
+      }
+      // أرسل حالة الخلفية بعد التأكد من الإشعارات
+      _updateSWBgState();
+    }catch(e){}
+  }, 4000);
 }, false);
 if(document.readyState!=='loading'){ setTimeout(_registerPeriodicSyncApp, 2500); } else { document.addEventListener('DOMContentLoaded', ()=> setTimeout(_registerPeriodicSyncApp, 2500)); }
 
@@ -928,15 +992,28 @@ try{
   if(products.length>0){
     _setBadge(products.length);
   } else {
-    // لو لا يوجد كاش، اعرض جاري المزامنة مؤقتاً
     _setSyncState('جاري المزامنة...','#c8943a','syncing');
   }
 }catch(e){}
 syncFromApi({force:true});
 initSupabaseRealtime();
 setTimeout(_sendConfigToSW, 1200);
+setTimeout(_sendConfigToSW, 3000);
 setTimeout(_registerPeriodicSyncApp, 1800);
 setTimeout(_updateSWBgState, 1500);
+setTimeout(_updateSWBgState, 3500);
+// اختبار إشعار يدوي للتشخيص — window.testNotif() و window.testNotifAdd()
+window.debugNotif = function(){
+  console.log('[DEBUG] notif_enabled', localStorage.getItem('notif_enabled'));
+  console.log('[DEBUG] cordova', !!window.cordova, 'local', !!(window.cordova&&window.cordova.plugins&&window.cordova.plugins.notification));
+  console.log('[DEBUG] SW controller', !!(navigator.serviceWorker&&navigator.serviceWorker.controller));
+  console.log('[DEBUG] NotifManager', !!window.NotifManager, window.NotifManager?window.NotifManager.isSupported():'?');
+  if(window.NotifManager && window.NotifManager.showNotification){
+    window.NotifManager.showNotification('اختبار debug ✓','الإشعارات تعمل — debugNotif','debug-'+Date.now());
+    return 'تم إرسال اختبار debug';
+  }
+  return 'NotifManager غير جاهز';
+};
 // === نظام مزامنة موحّد مُصلح — بدون تزاحم + خلفية دائمة ===
 let _pollFg = 8000; // عند الواجهة
 let _pollBg = 25000; // في الخلفية (25ث)
@@ -1205,7 +1282,7 @@ setInterval(backgroundAutoClean, 45000);
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="4.3";
+    const CUR="4.4";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
