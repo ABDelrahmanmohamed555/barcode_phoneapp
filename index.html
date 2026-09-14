@@ -24,7 +24,7 @@
       for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; }
       return 0;
     }
-    const CUR="4.10";
+    const CUR="4.11";
     // --- تنظيف تلقائي عند كل فتحة: لو OTA قديم أو تالف امسحه صامت ---
     try{
       const ver=localStorage.getItem('ota_version');
@@ -209,7 +209,7 @@
   function injectOrLoad(key, src, label){
     try{
       const ver=localStorage.getItem('ota_version');
-      const cur="4.10";
+      const cur="4.11";
       function _cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
       const otaVal=localStorage.getItem(key);
       if(otaVal && ver && _cmp(ver,cur)>0){
@@ -230,7 +230,7 @@
   // لو style OTA لم يُحقن مبكراً (fallback)
   try{
     const ver=localStorage.getItem('ota_version');
-    const cur="4.10";
+    const cur="4.11";
     function _cmp2(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
     if(ver && _cmp2(ver,cur)>0){
       const css=localStorage.getItem('ota_style.css');
@@ -308,7 +308,7 @@
   </script>
 
   <!-- ADMIN VIEW - اضافة منتج فقط -->
-  <div id="viewAdmin" class="view active">
+  <div id="viewAdmin" class="view" style="display:none">
     <div class="card">
       <div class="card-header">إضافة منتج</div>
       <div class="card-body">
@@ -331,8 +331,8 @@
     </div>
   </div>
 
-  <!-- USER VIEW - قائمة المنتجات (مع تعديل سريع) -->
-  <div id="viewUser" class="view" style="display:none">
+  <!-- USER VIEW - قائمة المنتجات (مع تعديل سريع) - افتراضي -->
+  <div id="viewUser" class="view active">
     <div class="card">
       <div class="card-header" style="justify-content:space-between;padding:0 12px"><span>قائمة المنتجات</span><button class="btn btn-ghost" style="height:28px;padding:0 10px" onclick="renderUserTable()">تحديث</button></div>
       <div class="search-row">
@@ -425,8 +425,8 @@
 
   <div class="tabs" style="position:sticky;bottom:0;background:var(--bg-dark);border-top:1px solid var(--border);overflow-x:auto;white-space:nowrap;scrollbar-width:none;-ms-overflow-style:none">
     <div style="display:flex;gap:8px;padding:10px;min-width:max-content">
-      <button id="tabAdmin" class="active" onclick="switchRole('admin')" style="min-width:120px">اضافة منتج</button>
-      <button id="tabUser" onclick="switchRole('employee')" style="min-width:120px">المنتجات </button>
+      <button id="tabAdmin" onclick="switchRole('admin')" style="min-width:120px">اضافة منتج</button>
+      <button id="tabUser" class="active" onclick="switchRole('employee')" style="min-width:120px">المنتجات </button>
       <button id="tabPricing" onclick="switchRole('pricing')" style="min-width:120px">تسعير منتج</button>
       <button id="tabShortage" onclick="switchRole('shortage')" style="min-width:120px">النواقص</button>
     </div>
@@ -529,7 +529,7 @@ window.addEventListener('load', ()=>{
 (function(){
   try{
     const ver = localStorage.getItem('ota_version');
-    const cur="4.10";
+    const cur="4.11";
     function _cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
     const otaApp = localStorage.getItem('ota_app.js');
     if(otaApp && hasOTA){
@@ -594,7 +594,7 @@ window.addEventListener('load', ()=>{
 <script>
 // اعرض نسخة OTA الحالية + حدّثها عند التحميل
 try{
-  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '4.10';
+  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '4.11';
   const el = document.getElementById('otaVerLabel');
   if(el) el.textContent = _v;
 }catch(e){}

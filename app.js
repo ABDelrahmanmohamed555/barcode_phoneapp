@@ -1136,6 +1136,8 @@ setInterval(()=>{ const d=new Date(); const cl=document.getElementById('clock');
 const scanEl=document.getElementById('scan');
 if(scanEl) scanEl.addEventListener('keydown', e=>{ if(e.key==='Enter') scanEnter(); });
 genBarcode(); renderTable(); renderUserTable(); renderPricingTable(); renderShortageTable(); if(typeof renderCart==='function') renderCart();
+// افتراضي: افتح على قائمة المنتجات V4.11
+try{ switchRole('employee'); }catch(e){}
 // عرض فوري للكاش المحلي — يظهر مزامن بالأزرق حتى قبل وصول السحابة
 // === إرسال إعدادات Supabase إلى SW للمزامنة الذاتية — V4.4 مُصلح جذري (يعيد المحاولة حتى ينجح) ===
 function _sendConfigToSW(){
@@ -1588,7 +1590,7 @@ setInterval(backgroundAutoClean, 90000); // كان 45ث → 90ث لتقليل ا
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="4.10";
+    const CUR="4.11";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
