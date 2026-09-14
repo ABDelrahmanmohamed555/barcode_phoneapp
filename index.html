@@ -24,7 +24,7 @@
       for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; }
       return 0;
     }
-    const CUR="4.6";
+    const CUR="4.6.1";
     // --- تنظيف تلقائي عند كل فتحة: لو OTA قديم أو تالف امسحه صامت ---
     try{
       const ver=localStorage.getItem('ota_version');
@@ -209,7 +209,7 @@
   function injectOrLoad(key, src, label){
     try{
       const ver=localStorage.getItem('ota_version');
-      const cur="4.6";
+      const cur="4.6.1";
       function _cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
       const otaVal=localStorage.getItem(key);
       if(otaVal && ver && _cmp(ver,cur)>0){
@@ -230,7 +230,7 @@
   // لو style OTA لم يُحقن مبكراً (fallback)
   try{
     const ver=localStorage.getItem('ota_version');
-    const cur="4.6";
+    const cur="4.6.1";
     function _cmp2(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
     if(ver && _cmp2(ver,cur)>0){
       const css=localStorage.getItem('ota_style.css');
@@ -290,7 +290,6 @@
     <div class="sync-actions">
       <button onclick="syncFromApi()" style="background:#c8943a;color:#fff">↻ مزامنة</button>
       <button onclick="checkForUpdate()" style="background:#2d8a4e;color:#fff">⬇ تحديث</button>
-      <button onclick="clearLocalCache()" style="background:#1c2333;color:#c8943a;border:1px solid #2d3543" title="مسح الكاش المحلي وإعادة التحميل من السحابة">⟲ كاش</button>
       <button id="notifBtn" onclick="if(window.NotifManager) NotifManager.requestPermission()" style="background:#1c2333;color:#c8943a;border:1px solid #2d3543" title="تفعيل الإشعارات">🔔</button>
     </div>
     <span class="sync-meta">سحابة: <span id="supabaseStatus">Supabase</span> | v<span id="otaVerLabel">1.0.0</span></span>
@@ -509,7 +508,7 @@ window.addEventListener('load', ()=>{
 (function(){
   try{
     const ver = localStorage.getItem('ota_version');
-    const cur="4.6";
+    const cur="4.6.1";
     function _cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
     const otaApp = localStorage.getItem('ota_app.js');
     if(otaApp && hasOTA){
@@ -574,7 +573,7 @@ window.addEventListener('load', ()=>{
 <script>
 // اعرض نسخة OTA الحالية + حدّثها عند التحميل
 try{
-  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '4.6';
+  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '4.6.1';
   const el = document.getElementById('otaVerLabel');
   if(el) el.textContent = _v;
 }catch(e){}

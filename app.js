@@ -1429,7 +1429,7 @@ setInterval(backgroundAutoClean, 90000); // كان 45ث → 90ث لتقليل ا
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="4.6";
+    const CUR="4.6.1";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
