@@ -260,21 +260,19 @@ function _applyProducts(newData, source){
 async function syncFromApi(opts={}){
   const force = !!(opts && opts.force);
   const now = Date.now();
-  // منع التزاحم: لا تسمح بمزامنة أخرى قبل 900ms إلا لو force وبعد 1.2s من الأخيرة
+  // تسريع: السماح بمزامنة كل 500ms بدل 1200ms (بعد إصلاح التداخل)
   if(!force && _syncInProgress){
-    console.log('[SYNC] تخطي - مزامنة جارية بالفعل');
+    console.log('[SYNC] تخطي - مزامنة جارية');
     return;
   }
   if(force && _syncInProgress){
-    // لو force لكن آخر مزامنة بدأت قبل أقل من 800ms، أجلها
-    if(now - _lastSyncTime < 800){
-      console.log('[SYNC] force مؤجل 800ms - مزامنة جارية');
-      setTimeout(()=> syncFromApi({force:true}), 900);
+    if(now - _lastSyncTime < 500){
+      console.log('[SYNC] force مؤجل 500ms');
+      setTimeout(()=> syncFromApi({force:true}), 550);
       return;
     }
   }
-  // debonce عام: لا تكرر نفس المزامنة قبل 1200ms إلا للحالات الحرجة
-  if(!force && now - _lastSyncTime < 1200){
+  if(!force && now - _lastSyncTime < 800){
     return;
   }
   if(!window.SupabaseSync || !window.SupabaseSync.isConfigured()){
@@ -1014,13 +1012,24 @@ window.debugNotif = function(){
   }
   return 'NotifManager غير جاهز';
 };
-// === نظام مزامنة موحّد مُصلح — بدون تزاحم + خلفية دائمة ===
-let _pollFg = 8000; // عند الواجهة
-let _pollBg = 25000; // في الخلفية (25ث)
+// === نظام مزامنة موحّد مُصلح V4.5.2 — سريع + ذكي + بدون تزاحم ===
+let _pollFg = 3500; // سريع لما Realtime مقطوع (3.5ث)
+let _pollBg = 12000; // خلفية أسرع (12ث) بدل 25ث
 let _pollTimer = null;
+function _getPollInterval(){
+  const isVisible = document.visibilityState==='visible';
+  const realtimeOk = (window.SupabaseSync && window.SupabaseSync.isRealtimeConnected && window.SupabaseSync.isRealtimeConnected());
+  if(realtimeOk){
+    // لو Realtime شغال، polling خفيف كـ backup فقط
+    return isVisible ? 12000 : 30000;
+  } else {
+    // لو Realtime مقطوع، سرّع polling للتعويض
+    return isVisible ? _pollFg : _pollBg;
+  }
+}
 function _schedulePoll(){
   if(_pollTimer) clearTimeout(_pollTimer);
-  const interval = document.visibilityState==='visible' ? _pollFg : _pollBg;
+  const interval = _getPollInterval();
   _pollTimer = setTimeout(async ()=>{
     try{ await syncFromApi({force:false}); }catch(e){}
     _schedulePoll();
@@ -1031,17 +1040,19 @@ document.addEventListener('visibilitychange', ()=>{
   _schedulePoll();
   if(document.visibilityState==='visible'){ _throttledSync('visibility visible'); }
 });
-// فحص صحة Realtime كل 10 ثوان + إعادة تشغيل لو ميت
-setInterval(()=>{ _checkRealtimeHealth(); }, 10000);
-// إعادة محاولة ذكية عند الفشل — كل 4 ثوان فقط لو فعلاً غير متصل (كان 3ث + 3ث جدولة = مضاعف)
+// فحص صحة Realtime كل 7 ثوان (بدل 10) + إعادة تشغيل فوري لو ميت
+setInterval(()=>{ _checkRealtimeHealth(); }, 7000);
+// إعادة محاولة ذكية — كل 3 ثوان فقط لو فعلاً غير متصل + Realtime مقطوع
 setInterval(()=>{
   const dot=document.getElementById('syncDot');
   const isOk=dot && dot.classList.contains('ok');
-  if(_syncFailCount>0 || _lastBadgeCount===-1 || !isOk){
-    console.log('[SYNC-RETRY 4s] محاولة تلقائية');
+  const rtOk = window.SupabaseSync && window.SupabaseSync.isRealtimeConnected && window.SupabaseSync.isRealtimeConnected();
+  if(rtOk && isOk && _syncFailCount===0) return; // لا حاجة — Realtime يكفي
+  if(_syncFailCount>0 || _lastBadgeCount===-1 || !isOk || !rtOk){
+    console.log('[SYNC-RETRY 3s] محاولة تلقائية (rtOk='+rtOk+')');
     syncFromApi({force:true});
   }
-}, 4000);
+}, 3000);
 // throttling لحدث online/visibility/focus — منع الطلقات المتكررة
 let _lastOnlineSync = 0;
 function _throttledSync(reason){
@@ -1063,8 +1074,8 @@ window.addEventListener('offline', ()=>{ _setSyncState('غير متصل - الس
 // مزامنة فورية عند عودة التطبيق للواجهة بدون الحاجة لإغلاقه — مع throttling
 window.addEventListener('focus', ()=>{ _throttledSync('focus'); });
 window.addEventListener('pageshow', ()=>{ _throttledSync('pageshow'); });
-// عند العودة من الخلفية، حدث SW state أيضاً
-setInterval(()=>{ try{ _updateSWBgState(); }catch(e){} }, 30000);
+// عند العودة من الخلفية، حدث SW state أيضاً (كان 30ث → 60ث لتقليل ضغط)
+setInterval(()=>{ try{ _updateSWBgState(); }catch(e){} }, 60000);
 
 // ===== حل جذري V3.12: اكتشاف حجم الشاشة الحقيقي وملء متجاوب لكل جهاز =====
 // يكتشف العرض/الطول/DPR/الاتجاه ويضيف فئات CSS ويحدّث متغيرات --screen-*
@@ -1274,15 +1285,15 @@ async function backgroundAutoClean(){
     }
   }catch(e){}
 }
-setTimeout(backgroundAutoClean, 4000);
-document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') setTimeout(backgroundAutoClean, 1500); });
-window.addEventListener('focus', ()=> setTimeout(backgroundAutoClean, 1500));
-setInterval(backgroundAutoClean, 45000);
+setTimeout(backgroundAutoClean, 6000);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') setTimeout(backgroundAutoClean, 2500); });
+window.addEventListener('focus', ()=> setTimeout(backgroundAutoClean, 2500));
+setInterval(backgroundAutoClean, 90000); // كان 45ث → 90ث لتقليل التداخل
 // مسح تلقائي ذكي مع كل فتحة — يمنع تعارض النسخ + 420px
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="4.5.1";
+    const CUR="4.5.2";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');

@@ -2,7 +2,7 @@
 // يعمل في المتصفح و Cordova (file://) بدون الحاجة لإعادة بناء APK
 // الفكرة: يفحص version.json من السيرفر، لو نسخة جديدة يحمل الملفات ويطبقها
 (function(){
-  const CURRENT_VERSION = "4.5.1"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
+  const CURRENT_VERSION = "4.5.2"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
   const STORAGE_KEY_VERSION = "ota_version";
   const STORAGE_KEY_IGNORE = "ota_ignore_version";
   const CHECK_INTERVAL_MS = 5 * 60 * 1000; // فحص كل 5 دقائق + عند كل فتح (كان ساعة)
@@ -59,9 +59,15 @@
 
   async function autoDiscoverServer(){
     if(_discovering) return _discoveredBase;
+    // V4.5.2: لو Supabase مهيأ (السحابة)، لا حاجة للبحث المحلي الثقيل إطلاقاً — يسبب بطء 2k طلب
+    try{
+      if(window.SupabaseSync && window.SupabaseSync.isConfigured && window.SupabaseSync.isConfigured()){
+        console.log('[OTA] Supabase مهيأ — تخطي autoDiscover الثقيل');
+        return null;
+      }
+    }catch(e){}
     const saved = (()=>{ try{ return localStorage.getItem('prot_api_base'); }catch(e){return null;} })();
     if(saved) return saved;
-    // لو مفتوح عبر http (ليس file://) لا حاجة للبحث
     if(location.hostname && location.hostname!=='') return null;
     _discovering = true;
     console.log('[OTA] بدء البحث التلقائي عن السيرفر...');
@@ -114,24 +120,31 @@
     }catch(e){}
   }
 
-  // روابط الفحص بالترتيب — أول واحد ينجح يُستخدم
   function getCheckUrls(){
     const api = getApiBase();
     const override = getRemoteOverride();
+    const isCordova = (location.protocol==='file:' || !location.hostname);
     const urls = [];
     if(override) urls.push(override.replace(/\/+$/,'') + '/version.json');
-    urls.push(api + '/api/app_version');
-    urls.push(api + '/version.json');
-    urls.push('./version.json');
+    // V4.5.2: على Cordova (phone) الغالب سحابي — ضع GitHub أولاً لتجنب انتظار 3*9ث لفشل local
+    if(isCordova){
+      const PUBLIC_RAW = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main/version.json';
+      urls.push(PUBLIC_RAW);
+      urls.push('https://cdn.jsdelivr.net/gh/ABDelrahmanmohamed555/barcode_phoneapp@main/version.json');
+      urls.push('./version.json');
+      urls.push(api + '/api/app_version');
+      urls.push(api + '/version.json');
+    } else {
+      urls.push(api + '/api/app_version');
+      urls.push(api + '/version.json');
+      urls.push('./version.json');
+      const PUBLIC_RAW = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main/version.json';
+      urls.push(PUBLIC_RAW);
+      urls.push('https://cdn.jsdelivr.net/gh/ABDelrahmanmohamed555/barcode_phoneapp@main/version.json');
+    }
     if(location.origin && location.origin !== 'null' && location.origin !== 'file://'){
       urls.push(location.origin + '/version.json');
     }
-    // GitHub Raw — المصدر الوحيد عند انطفاء اللابتوب (بعد push)
-    // الملفات في جذر الريبو (phone app هو الريبو نفسه)، لذا المسار الصحيح هو /main/version.json
-    const PUBLIC_RAW = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main/version.json';
-    urls.push(PUBLIC_RAW);
-    // حاول أيضاً عبر jsDelivr كـ fallback CDN أسرع داخل WebView
-    urls.push('https://cdn.jsdelivr.net/gh/ABDelrahmanmohamed555/barcode_phoneapp@main/version.json');
     return [...new Set(urls)];
   }
 

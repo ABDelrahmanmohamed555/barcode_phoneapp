@@ -48,7 +48,7 @@
       delete opts.headers;
     }
     const ctrl = new AbortController();
-    const t = setTimeout(()=> ctrl.abort(), 15000); // زيادة ل 15s لتجنب الفشل المتقطع على الشبكات البطيئة
+    const t = setTimeout(()=> ctrl.abort(), 8000); // V4.5.2: 8ث بدل 15ث لتسريع كشف الفشل (المزامنة بطيئة بسبب مهلة طويلة)
     try{
       const r = await fetch(`${cfg.url}/rest/v1/${path}`, {
         headers,
@@ -70,13 +70,13 @@
       return data;
     }catch(e){
       clearTimeout(t);
-      if(e.name==='AbortError') throw new Error('انتهت مهلة الاتصال (15s) - تحقق من الإنترنت');
+      if(e.name==='AbortError') throw new Error('انتهت مهلة الاتصال (8s) - تحقق من الإنترنت');
       throw e;
     }
   }
 
   async function getProducts(){
-    // retry داخلي مرتين مع backoff لتغطية الفشل العابر (شبكة/503/timeout)
+    // V4.5.2: retry أسرع (400ms) بدل 800ms + مهلة 8ث
     let lastErr = null;
     for(let attempt=0; attempt<3; attempt++){
       try{
@@ -85,9 +85,9 @@
       }catch(e){
         lastErr = e;
         const msg = e.message || '';
-        const retryable = msg.includes('مهلة') || msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('retryable') || msg.includes('15s') || msg.includes('503') || msg.includes('429') || msg.includes('502');
+        const retryable = msg.includes('مهلة') || msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('retryable') || msg.includes('8s') || msg.includes('503') || msg.includes('429') || msg.includes('502');
         if(retryable && attempt < 2){
-          const wait = 800 * (attempt+1);
+          const wait = 400 * (attempt+1);
           console.warn(`[Supabase] getProducts retry ${attempt+1}/2 بعد ${wait}ms — ${msg.slice(0,60)}`);
           await new Promise(r=> setTimeout(r, wait));
           continue;
