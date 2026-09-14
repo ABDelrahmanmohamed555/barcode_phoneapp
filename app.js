@@ -703,6 +703,74 @@ async function saveEditModal(){
   }
 }
 window.saveEditModal = saveEditModal;
+
+// === إصلاح OTA V4.6.2: مودال HTML لا يصل عبر OTA (index.html معطل) → أنشئه عبر JS + أخفِ زر الكاش ===
+function ensureEditModalExists(){
+  if(document.getElementById('editModal')) return;
+  try{
+    const modal = document.createElement('div');
+    modal.id='editModal';
+    modal.className='edit-modal';
+    modal.style.display='none';
+    modal.onclick = function(e){ if(e.target===modal) closeEditModal(); };
+    modal.innerHTML = `
+    <div class="edit-modal-card" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+      <div class="edit-modal-header">
+        <span id="editModalTitle">تعديل المنتج</span>
+        <button class="edit-modal-close" onclick="closeEditModal()" aria-label="إغلاق">✕</button>
+      </div>
+      <div class="edit-modal-body">
+        <label class="label">اسم المنتج</label>
+        <input id="editName" class="input" placeholder="اسم المنتج"/>
+        <label class="label">الباركود (لا يمكن تعديله)</label>
+        <input id="editBarcode" class="input" disabled style="opacity:.6;background:#1c2333"/>
+        <label class="label">الفئة</label>
+        <select id="editCategory" class="input"><option>عام</option><option>أجهزة</option><option>قطع غيار</option><option>إكسسوارات</option><option>أخرى</option></select>
+        <div class="row" style="margin-top:8px">
+          <div style="flex:1"><label class="label">السعر (جنيه)</label><input id="editPrice" class="input" type="number" inputmode="decimal" placeholder="0.00"/></div>
+          <div style="flex:1"><label class="label">المخزون</label><input id="editStock" class="input" type="number" inputmode="numeric" placeholder="0"/></div>
+        </div>
+        <label class="label">الوصف (اختياري)</label>
+        <input id="editDesc" class="input" placeholder="وصف مختصر"/>
+        <input type="hidden" id="editId"/>
+      </div>
+      <div class="edit-modal-footer">
+        <button class="btn btn-ghost" style="flex:1" onclick="closeEditModal()">إلغاء</button>
+        <button class="btn btn-success" style="flex:1.2" onclick="saveEditModal()">حفظ التعديل ✓</button>
+      </div>
+      <div id="editModalHint" style="text-align:center;font-size:11px;color:#9e9e9e;padding:0 12px 10px;display:none"></div>
+    </div>`;
+    document.body.appendChild(modal);
+    console.log('[EDIT] modal injected via JS OTA ✓');
+  }catch(e){ console.warn('[EDIT] inject fail', e); }
+}
+function hideCacheButton(){
+  try{
+    // أخفِ أي زر ينادي clearLocalCache / يحتوي ⟲ أو كلمة كاش
+    const btns = document.querySelectorAll('.sync-actions button');
+    btns.forEach(b=>{
+      const onclick = b.getAttribute('onclick')||'';
+      const txt = (b.textContent||'').trim();
+      if(onclick.includes('clearLocalCache') || txt.includes('كاش') || txt.includes('⟲')){
+        b.style.display='none';
+        console.log('[OTA] hide cache button', txt);
+      }
+    });
+  }catch(e){}
+}
+// شغّل فوراً و عند الجاهزية (لضمان بعد OTA)
+try{ ensureEditModalExists(); hideCacheButton(); }catch(e){}
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded', ()=>{ try{ ensureEditModalExists(); hideCacheButton(); }catch(e){} });
+} else {
+  setTimeout(()=>{ try{ ensureEditModalExists(); hideCacheButton(); }catch(e){} }, 300);
+}
+// راقب DOM لو تأخر تحميل sync-bar
+try{
+  const obs = new MutationObserver(()=>{ hideCacheButton(); });
+  obs.observe(document.documentElement, {childList:true, subtree:true});
+  setTimeout(()=> obs.disconnect(), 8000);
+}catch(e){}
 function syncPricing(){
   const badge=document.getElementById('pricingCount');
   const count=products.filter(p=>!p.price || parseFloat(p.price)===0).length;
@@ -1429,7 +1497,7 @@ setInterval(backgroundAutoClean, 90000); // كان 45ث → 90ث لتقليل ا
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="4.6.1";
+    const CUR="4.6.2";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
