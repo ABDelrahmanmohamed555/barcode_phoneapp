@@ -561,12 +561,148 @@ function renderUserTable(){
       <span class="w-num">${p.stock}</span>
       <span class="price">${parseFloat(p.price).toFixed(2)}</span>
       <span>${p.category}</span>
-      <span style="font-size:11px">${p.barcode}</span>
-      <span>${p.name}</span>`;
+      <span style="font-size:11px;flex:1.2">${p.barcode}</span>
+      <span style="flex:1.5">${p.name}</span>
+      <span class="w-ctrl" style="flex:0 0 70px;display:flex;gap:4px;justify-content:center">
+        <button class="edit" style="width:62px;height:26px;font-size:11px;background:#c8943a;color:#fff;border:none;border-radius:6px;cursor:pointer" onclick="openEditModal(${p.id})" title="تعديل">✏ تعديل</button>
+      </span>`;
+    // ضغط على الصف نفسه يفتح التعديل
+    row.style.cursor='pointer';
+    row.addEventListener('click', (e)=>{
+      if(e.target.closest('button')) return;
+      openEditModal(p.id);
+    });
     body.appendChild(row);
   });
   if(filtered.length===0) body.innerHTML=`<div style="text-align:center;color:#9e9e9e;padding:20px">لا توجد منتجات</div>`;
 }
+
+// ===== مودال تعديل المنتج (قائمة المنتجات) — V4.6 =====
+let _editingProductId = null;
+function openEditModal(id){
+  const p = products.find(x=> x.id===id);
+  if(!p){ showToast('المنتج غير موجود','error'); return; }
+  _editingProductId = id;
+  const modal = document.getElementById('editModal');
+  if(!modal) return;
+  // عبئ الحقول
+  const nameEl=document.getElementById('editName');
+  const barcodeEl=document.getElementById('editBarcode');
+  const catEl=document.getElementById('editCategory');
+  const priceEl=document.getElementById('editPrice');
+  const stockEl=document.getElementById('editStock');
+  const descEl=document.getElementById('editDesc');
+  const idEl=document.getElementById('editId');
+  const hintEl=document.getElementById('editModalHint');
+  if(nameEl) nameEl.value = p.name||'';
+  if(barcodeEl) barcodeEl.value = p.barcode||'';
+  if(catEl) catEl.value = p.category||'عام';
+  if(priceEl) priceEl.value = (p.price!=null? String(p.price):'');
+  if(stockEl) stockEl.value = (p.stock!=null? String(p.stock):'');
+  if(descEl) descEl.value = p.description||p.desc||'';
+  if(idEl) idEl.value = String(p.id);
+  if(hintEl){ hintEl.style.display='none'; hintEl.textContent=''; }
+  modal.style.display='flex';
+  document.body.style.overflow='hidden';
+  setTimeout(()=>{ if(nameEl) nameEl.focus(); }, 80);
+  console.log('[EDIT] فتح', id, p.name);
+}
+function closeEditModal(){
+  const modal=document.getElementById('editModal');
+  if(modal) modal.style.display='none';
+  document.body.style.overflow='';
+  _editingProductId=null;
+}
+window.openEditModal = openEditModal;
+window.closeEditModal = closeEditModal;
+// إغلاق بـ ESC
+document.addEventListener('keydown', (e)=>{
+  if(e.key==='Escape'){
+    const m=document.getElementById('editModal');
+    if(m && m.style.display!=='none') closeEditModal();
+  }
+});
+async function saveEditModal(){
+  const idVal = document.getElementById('editId')?.value;
+  const id = idVal ? parseInt(idVal,10) : _editingProductId;
+  if(!id) return showToast('معرف غير صالح','error');
+  const orig = products.find(x=> x.id===id);
+  if(!orig) return showToast('المنتج غير موجود','error');
+  const name = (document.getElementById('editName')?.value||'').trim();
+  const category = document.getElementById('editCategory')?.value||'عام';
+  const priceRaw = document.getElementById('editPrice')?.value;
+  const stockRaw = document.getElementById('editStock')?.value;
+  const desc = (document.getElementById('editDesc')?.value||'').trim();
+  const price = parseFloat(priceRaw);
+  const stock = parseInt(stockRaw,10);
+  const hintEl=document.getElementById('editModalHint');
+  if(!name) return showToast('ادخل اسم المنتج','warning');
+  if(isNaN(price) || price<0) return showToast('ادخل سعر صحيح >=0','warning');
+  if(isNaN(stock) || stock<0) return showToast('ادخل مخزون صحيح >=0','warning');
+  // لا تغيّر الباركود — ثابت
+  const patch = {
+    name: name,
+    category: category,
+    price: price,
+    stock: stock,
+    description: desc,
+    barcode: orig.barcode,
+    updated_at: _localNow()
+  };
+  const saveBtn = document.querySelector('#editModal .btn-success');
+  if(saveBtn){ saveBtn.disabled=true; saveBtn.textContent='جاري الحفظ...'; }
+  try{
+    // علّم كـ self لتجنب إشعار مزعج لنفسك (اختياري)
+    try{ if(window.NotifManager) NotifManager.markSelfAdd(orig.barcode); }catch(e){}
+    let updated=null;
+    if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
+      console.log('[EDIT] إرسال للسحابة', id, patch);
+      updated = await SupabaseSync.updateProduct(id, patch);
+      if(!updated){
+        console.warn('[EDIT] updateProduct رجع null — محاولة جلب');
+        try{
+          const all=await SupabaseSync.getProducts();
+          updated = all.find(x=> x.id===id || x.barcode===orig.barcode) || null;
+        }catch(e){}
+      }
+      if(!updated){
+        throw new Error('فشل التحديث — تحقق من الاتصال بالسحابة');
+      }
+    } else {
+      throw new Error('Supabase غير مهيأ');
+    }
+    // حدّث الذاكرة المحلية فوراً
+    const p = products.find(x=> x.id===id);
+    if(p){
+      p.name = updated.name!=null? updated.name : name;
+      p.category = updated.category||category;
+      p.price = updated.price!=null? updated.price : price;
+      p.stock = updated.stock!=null? updated.stock : stock;
+      p.description = updated.description!=null? updated.description : desc;
+      p.barcode = updated.barcode||orig.barcode;
+      p.updated_at = updated.updated_at||patch.updated_at;
+    }
+    _syncWindowProducts();
+    try{ _updateSWBgState(); }catch(e){}
+    _lastTableHash=""; _lastUserHash=""; _lastPricingHash="";
+    renderUserTable();
+    renderPricingTable();
+    const tb=document.getElementById('tableBody'); if(tb) renderTable();
+    _setBadge(products.length);
+    closeEditModal();
+    showToast(`تم التعديل ومزامنته ✓ ${name} — ${price} جنيه / ${stock} متاح`,'success',3500);
+    // مزامنة فورية للتأكد
+    setTimeout(()=> syncFromApi({force:true}), 700);
+    if(hintEl){ hintEl.style.display='block'; hintEl.textContent='تم الحفظ ✓'; }
+  }catch(e){
+    console.error('[EDIT] fail', e);
+    showToast('فشل الحفظ: '+e.message,'error',4000);
+    if(hintEl){ hintEl.style.display='block'; hintEl.textContent='فشل: '+e.message; hintEl.style.color='#c73e3e'; }
+  }finally{
+    if(saveBtn){ saveBtn.disabled=false; saveBtn.textContent='حفظ التعديل ✓'; }
+  }
+}
+window.saveEditModal = saveEditModal;
 function syncPricing(){
   const badge=document.getElementById('pricingCount');
   const count=products.filter(p=>!p.price || parseFloat(p.price)===0).length;
@@ -1293,7 +1429,7 @@ setInterval(backgroundAutoClean, 90000); // كان 45ث → 90ث لتقليل ا
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="4.5.2";
+    const CUR="4.6";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');

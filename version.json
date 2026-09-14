@@ -1,28 +1,29 @@
 {
-  "version": "4.5.2",
-  "build": 83,
-  "date": "2026-09-14T13:31:38",
-  "notes": "تسريع مزامنة المنتجات 3.5ث + إصلاح تداخل OTA - Realtime ذكي + تعطيل فحص شبكة ثقيل",
+  "version": "4.6",
+  "build": 84,
+  "date": "2026-09-14T13:55:05",
+  "notes": "إضافة تعديل المنتجات في قائمة المنتجات - تعديل السعر والاسم والمخزون مع مزامنة فورية للسحابة والديسكتوب",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "0d22d5b5201979305192979de8c9b426011188b77acf63691b20ba0b971f856a",
+    "app.js": "42781d37b5496d1c6aa6430623aef64e288ff1f4b5476067b020da54f0b4cb6a",
     "clear_cache.html": "bd4ad6bbd26800c0179ff18fdacf55de7f24101c6b1db2cb40fd7a127e8dab6e",
     "debug_supabase.html": "abacb753227f164259a902d396f75d54c11c0f6e0f569edeb5fda0382a87439c",
     "fcm_manager.js": "6081a58481e106f39faac93c50b0ac8aea57f42e3b1f58a4d0070d50a2024603",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
-    "index.html": "8c8cdbdfc0f4e91cb9ce710cff50633cf2cfa6d0d762270476299df74fcfffe5",
+    "index.html": "be8edbf2562fb0dbeeaac67b49d0e32dc0936e453348e9f739fd3fe873fa0c4f",
     "manifest.json": "9efd63864d9b23c36eb2be6c054762f0fda7e3c6ca946064d6be411b60b5df26",
     "preview_notif.html": "29139a28d155a304be121ee9b1a2169be43671c08c6519367e34b53c49a289b2",
     "products.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
     "push_notifications.js": "82ed5778738e09b3f74029e3a299e4197afc470b24ca5b27d0e80933b814209e",
-    "style.css": "c9daa829996470441ec8d62ec03ddb41bc4519292cff6f2378d632a3e0e9bf1a",
+    "style.css": "ff0286f31630cf03dba9161b2aeca80a38dcfbaf3a18c53e79d8dc3e279824ef",
     "supabase_sync.js": "294303e853a754039fd9317e72d57d9221c0f06371fc4d8f1c178669d3d51ce4",
-    "sw.js": "e4740bddbbe85eab38036d935e4c2516ce7e00b76a0d5ba6f413cd8d1710f839",
-    "updater.js": "ff5cf33448241c2ff53da96153c5e92083964e46a8263e9ecccebf252e459dcd",
-    "version.json": "f7cd631c76397f39f4540dfc1c8a0273d76634f8e608e4d3630c381761d3cf4c"
+    "sw.js": "927eb8a4d6608f39c3daf23041d2c6ff8ea838097d3eee32eaca04a00a1fceaa",
+    "updater.js": "fe19e29286196b256be942b4f5b9c1b5a1a938d20f1ad0647189c7b0caca0420",
+    "version.json": "9a2eb1cae6b6366c0c2db785ba46002894305a27930ef368b5e2ac41f1a92952"
   },
   "changelog": [
+    "4.6 - إضافة تعديل المنتجات في قائمة المنتجات - تعديل السعر والاسم والمخزون مع مزامنة فورية للسحابة والديسكتوب (2026-09-14)",
     "4.5.2 - تسريع مزامنة المنتجات 3.5ث + إصلاح تداخل OTA - Realtime ذكي + تعطيل فحص شبكة ثقيل (2026-09-14)",
     "4.5.1 - تحديث CI patch - إصلاح Gradle 8 لدعم local-notification Badge في بناء APK السحابي (2026-09-14)",
     "4.5 - إصلاح مزامنة GitHub OTA جذري + تحديث نظام الإشعارات V4.4 + إضافة local-notification CI - إصلاح هاش (2026-09-14)",
@@ -41,7 +42,6 @@
     "3.27 - تحديث صفحة التشخيص الجذري + حل OTA (2026-09-13)",
     "3.27 - حل جذري فرق المزامنة VSCode vs APK - OTA hash fix + CORS + تشخيص Supabase (2026-09-13)",
     "3.26 - إصلاح جذري مزامنة دائمة + إشعارات خلفية + FCM + background fetch (2026-09-13)",
-    "3.26 - إصلاح جذري مزامنة دائمة + إشعارات خلفية + FCM + background fetch (2026-09-13)",
-    "3.25 - نظيف سحابي فقط متزامن - إصلاح تذبذب المزامنة + debug (2026-09-13)"
+    "3.26 - إصلاح جذري مزامنة دائمة + إشعارات خلفية + FCM + background fetch (2026-09-13)"
   ]
 }

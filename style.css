@@ -315,3 +315,19 @@ html, body{
   *::-webkit-scrollbar-track{background:transparent}
   *{scrollbar-width:thin;scrollbar-color:#2d3543 transparent}
 }
+
+/* ===== مودال تعديل المنتج (قائمة المنتجات) ===== */
+.edit-modal{position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;animation:modalFadeIn 220ms ease}
+.edit-modal-card{width:min(92vw,440px);max-height:90vh;overflow-y:auto;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.5);display:flex;flex-direction:column;animation:modalCardIn 280ms cubic-bezier(0.22,1,0.36,1)}
+.edit-modal-header{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--border);font-weight:800;color:var(--text-white);flex-shrink:0}
+.edit-modal-close{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-light);cursor:pointer;display:grid;place-items:center;font-size:14px}
+.edit-modal-close:active{transform:scale(.94)}
+.edit-modal-body{padding:14px;flex:1;overflow-y:auto}
+.edit-modal-footer{display:flex;gap:10px;padding:12px 14px;border-top:1px solid var(--border);flex-shrink:0}
+.edit-modal-footer .btn{height:42px}
+@keyframes modalFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes modalCardIn{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media (min-width:600px){.edit-modal-card{width:min(86vw,480px)}}
+.edit-modal-card .label{margin-top:10px}
+.edit-modal-card .label:first-child{margin-top:0}
+#editBarcode:disabled{cursor:not-allowed}
