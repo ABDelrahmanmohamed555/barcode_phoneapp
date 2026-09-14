@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "376871841276",
+    "project_id": "elnahal-technology",
+    "storage_bucket": "elnahal-technology.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:376871841276:android:12d249ce5c6d988be0d679",
+        "android_client_info": {
+          "package_name": "com.nahal.cashier"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNadBTSZTaNbkj2ZSg50ZFAFF1ZdN4lTU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

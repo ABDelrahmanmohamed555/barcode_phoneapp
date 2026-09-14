@@ -1,0 +1,57 @@
+<?xml version='1.0' encoding='utf-8'?>
+<widget android-versionCode="40081" id="com.nahal.cashier" version="4.5.0" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+    <name>elnahal technology</name>
+    <description>elnahal technology - نظام المنتجات والباركود - V4.5 إصلاح الإشعارات الجذري</description>
+    <author email="dev@nahal.com" href="https://nahal.com">
+        Elnahal Technology
+    </author>
+    <content src="index.html" />
+    <preference name="Orientation" value="default" />
+    <preference name="Fullscreen" value="false" />
+    <preference name="AndroidInsecureFileModeEnabled" value="true" />
+    <preference name="AndroidXEnabled" value="true" />
+    <access origin="*" />
+    <allow-navigation href="http://*/*" />
+    <allow-navigation href="https://*/*" />
+    <allow-navigation href="data:*" />
+    <allow-intent href="http://*/*" />
+    <allow-intent href="https://*/*" />
+    <allow-intent href="tel:*" />
+    <platform name="android">
+        <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">
+            <application android:networkSecurityConfig="@xml/network_security_config" android:usesCleartextTraffic="true" />
+        </edit-config>
+        <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest">
+            <uses-permission android:name="android.permission.INTERNET" />
+            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+            <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+            <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+            <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+            <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+            <uses-permission android:name="android.permission.WAKE_LOCK" />
+            <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+            <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+            <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+            <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+            <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+            <uses-permission android:name="android.permission.VIBRATE" />
+        </edit-config>
+        <resource-file src="network_security_config.xml" target="app/src/main/res/xml/network_security_config.xml" />
+        <resource-file src="google-services.json" target="app/google-services.json" />
+    </platform>
+    <plugin name="cordova-plugin-file" spec="^8.1.3" />
+    <plugin name="cordova-plugin-zip" spec="^3.1.0" />
+    <plugin name="cordova-plugin-file-opener2" spec="^4.3.0" />
+    <plugin name="cordova-plugin-whitelist" spec="^1.3.5" />
+    <plugin name="cordova-plugin-background-fetch" spec="^7.1.0" />
+    <plugin name="cordova-plugin-background-mode" spec="^0.7.3" />
+    <plugin name="cordova-plugin-local-notification" spec="^0.9.0-beta.3" />
+    <plugin name="cordova-plugin-device" spec="^3.0.0" />
+    <plugin name="cordova-plugin-badge" spec="^0.8.8" />
+    <!-- FCM اختياري: لو مثبت سيعمل push حتى لو التطبيق مقفول تماماً، وإلا يعتمد على local notification + Supabase Realtime -->
+    <!-- <plugin name="cordova-plugin-firebasex" spec="^17.0.0"> -->
+    <!--     <variable name="ANDROID_FIREBASE_BOM_VERSION" value="32.7.0" /> -->
+    <!--     <variable name="ANDROID_PLAY_SERVICES_TAGMANAGER_VERSION" value="18.0.4" /> -->
+    <!-- </plugin> -->
+</widget>

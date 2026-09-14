@@ -74,6 +74,7 @@ def main():
     ap.add_argument("--message", default="update 1", help="رسالة الكومنت (يجب أن تبدأ بـ update+رقم ليكتشفها الموبايل)")
     ap.add_argument("--products-only", action="store_true", help="رفع products.json فقط")
     ap.add_argument("--version-only", action="store_true", help="رفع version.json فقط")
+    ap.add_argument("--all", action="store_true", help="رفع كل الملفات في version.json (موصى به)")
     args = ap.parse_args()
 
     if args.products_only:
@@ -83,12 +84,38 @@ def main():
         files = ["version.json","app.js","style.css","index.html","updater.js"]
         msg = args.message
     else:
-        # افتراضي: كل ملفات التحديث + المنتجات
-        files = ["version.json","app.js","style.css","index.html","updater.js","sw.js","products.json","manifest.json"]
+        # افتراضي: اقرأ version.json وارفع كل الملفات المشار إليها + الملفات الأساسية
+        try:
+            vpath = BASE / "version.json"
+            if vpath.exists():
+                vdata = json.loads(vpath.read_text(encoding="utf-8"))
+                files_from_version = list(vdata.get("files", {}).keys())
+                # أضف version.json نفسه دائماً
+                if "version.json" not in files_from_version:
+                    files_from_version.append("version.json")
+                # أضف ملفات أساسية قد لا تكون في الهاش لكن مطلوبة
+                for must in ["index.html","app.js","push_notifications.js","fcm_manager.js","supabase_sync.js","sw.js","updater.js","manifest.json","style.css","icon.png","protPhone/config.xml","protPhone/package.json","protPhone/www/version.json"]:
+                    if (BASE / must).exists() and must not in files_from_version:
+                        files_from_version.append(must)
+                files = files_from_version
+            else:
+                files = ["version.json","app.js","style.css","index.html","updater.js","sw.js","products.json","manifest.json","push_notifications.js","fcm_manager.js","supabase_sync.js"]
+        except Exception as e:
+            print(f"⚠ فشل قراءة version.json: {e}")
+            files = ["version.json","app.js","style.css","index.html","updater.js","sw.js","products.json","manifest.json","push_notifications.js","fcm_manager.js","supabase_sync.js"]
         msg = args.message
         # تأكد أن الرسالة تبدأ بـ update
         if not msg.strip().lower().startswith("update"):
             msg = "update 1 - " + msg
+        # أضف أيضاً protPhone/www لكل ملف (للمزامنة مع البناء)
+        extra = []
+        for f in list(files):
+            if f.startswith("protPhone/"):
+                continue
+            wp = f"protPhone/www/{f}"
+            if (BASE / wp).exists():
+                extra.append(wp)
+        files.extend(extra)
 
     # تحقق من token
     if not has_token():

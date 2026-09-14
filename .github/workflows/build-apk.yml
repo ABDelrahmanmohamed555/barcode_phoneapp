@@ -5,10 +5,15 @@ on:
     branches: [ main ]
     paths:
       - 'protPhone/config.xml'
+      - 'protPhone/package.json'
       - 'protPhone/www/**'
       - 'version.json'
       - 'app.js'
       - 'index.html'
+      - 'push_notifications.js'
+      - 'fcm_manager.js'
+      - 'sw.js'
+      - 'updater.js'
   workflow_dispatch:
 
 jobs:
@@ -40,20 +45,42 @@ jobs:
 
       - name: Install deps
         working-directory: ./protPhone
-        run: npm install
+        run: npm ci || npm install
 
       - name: Add Android platform (if missing)
         working-directory: ./protPhone
         run: |
-          if [ ! -d "platforms/android" ]; then cordova platform add android; fi
+          if [ ! -d "platforms/android" ]; then cordova platform add android@15.1.0; fi
+          # تأكد من أن المنصة محضّرة بعد تثبيت الحزم
+          npx cordova prepare android || cordova prepare android
 
-      - name: Install plugins
+      - name: Sync www from root (OTA files)
+        run: |
+          echo "Syncing root www files to protPhone/www"
+          for f in app.js index.html style.css sw.js updater.js supabase_sync.js push_notifications.js fcm_manager.js manifest.json icon.png version.json; do
+            if [ -f "$f" ]; then cp -v "$f" "protPhone/www/$f"; fi
+          done
+          cp -v version.json protPhone/www/version.json || true
+          ls -lh protPhone/www/version.json
+
+      - name: Install plugins (incl. local-notification for V4.4+)
         working-directory: ./protPhone
         run: |
           cordova plugin add cordova-plugin-file --save || true
           cordova plugin add cordova-plugin-zip --save || true
           cordova plugin add cordova-plugin-file-opener2 --save || true
           cordova plugin add cordova-plugin-whitelist --save || true
+          cordova plugin add cordova-plugin-device --save || true
+          cordova plugin add cordova-plugin-background-fetch --save || true
+          cordova plugin add cordova-plugin-background-mode --save || true
+          cordova plugin add cordova-plugin-local-notification@0.9.0-beta.3 --save || true
+          cordova plugin add cordova-plugin-badge --save || true
+          # اطبع قائمة البلوجنز للتأكد
+          cordova plugin list
+
+      - name: Prepare Android
+        working-directory: ./protPhone
+        run: cordova prepare android
 
       - name: Build APK
         working-directory: ./protPhone
@@ -79,21 +106,28 @@ jobs:
         if: contains(github.event.head_commit.message, 'update')
         run: |
           python3 << 'PY'
-          import json, pathlib
+          import json, pathlib, hashlib
           vpath = pathlib.Path("version.json")
           data = json.loads(vpath.read_text(encoding="utf-8"))
-          # apk_version هو نفس version الحالي
           apk_ver = data.get("version", "1.0.0")
           run_no = "${{ github.run_number }}"
           apk_url = f"https://github.com/ABDelrahmanmohamed555/barcode_phoneapp/releases/download/apk-v{run_no}/app-debug.apk"
           data["apk_url"] = apk_url
           data["apk_version"] = apk_ver
+          # أيضاً ثبّت الهاش الجديد لـ protPhone/www/version.json المحدث
+          # لا تغيّر الهاشات الأخرى — فقط أضف apk
           vpath.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+          # انسخ إلى protPhone/www
+          try:
+              import shutil
+              shutil.copy2(vpath, pathlib.Path("protPhone/www/version.json"))
+          except Exception as e:
+              print(f"copy fail {e}")
           print(f"Updated version.json apk_url={apk_url} apk_version={apk_ver}")
           PY
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.json
+          git add version.json protPhone/www/version.json
           git diff --cached --quiet || git commit -m "chore: update apk url [skip ci]"
           git push origin main
         env:

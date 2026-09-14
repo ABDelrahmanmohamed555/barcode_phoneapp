@@ -94,7 +94,8 @@ def main():
             except Exception:
                 pass
 
-    # --- OTA V3: حدّث CUR و CURRENT_VERSION و sw.js تلقائياً ---
+    # --- OTA V3: حدّث CUR و CURRENT_VERSION و sw.js تلقائياً (قبل الهاش) ---
+    updated_files = []
     try:
         import re
         # 1) sw.js
@@ -107,51 +108,74 @@ def main():
             sw_text_new = re.sub(r"\[SW [^\]]+\] activate", f"[SW {new_ver}] activate", sw_text_new)
             if sw_text_new != sw_text:
                 sw_path.write_text(sw_text_new, encoding="utf-8")
+                updated_files.append("sw.js")
                 print(f"  → حدّث sw.js إلى v{new_ver}")
         # 2) updater.js CURRENT_VERSION
         upd_path = BASE / "updater.js"
         if upd_path.exists():
             t = upd_path.read_text(encoding="utf-8")
-            t2 = re.sub(r'const CURRENT_VERSION\s*=\s*"[^"]*"', f'const CURRENT_VERSION = "{new_ver}.0"', t)
-            # fallback لو كان بدون .0
-            if t2==t:
-                t2 = re.sub(r'const CURRENT_VERSION\s*=\s*"[^"]*"', f'const CURRENT_VERSION = "{new_ver}"', t)
-            # صحح لـ new_ver بدون .0 إذا new_ver فيه 3 أجزاء
-            # اجعلها دائماً new_ver
-            t2 = re.sub(r'const CURRENT_VERSION\s*=\s*"[^"]*"', f'const CURRENT_VERSION = "{new_ver}"', t2)
+            t2 = re.sub(r'const CURRENT_VERSION\s*=\s*"[^"]*"', f'const CURRENT_VERSION = "{new_ver}"', t)
             if t2!=t:
                 upd_path.write_text(t2, encoding="utf-8")
+                updated_files.append("updater.js")
                 print(f"  → حدّث updater.js CURRENT_VERSION إلى {new_ver}")
         # 3) index.html — كل CUR/cur
         idx_path = BASE / "index.html"
         if idx_path.exists():
             it = idx_path.read_text(encoding="utf-8")
-            # OTA_BOOT CUR
             it2 = re.sub(r'const CUR\s*=\s*"[^"]*"', f'const CUR="{new_ver}"', it)
-            # جميع const cur = "x"
             it2 = re.sub(r'const cur\s*=\s*"[^"]*"', f'const cur="{new_ver}"', it2)
-            # also showToast fallback version
             it2 = re.sub(r"localStorage\.getItem\('ota_version'\) \|\| '[^']*'", f"localStorage.getItem('ota_version') || '{new_ver}'", it2)
             if it2!=it:
                 idx_path.write_text(it2, encoding="utf-8")
+                updated_files.append("index.html")
                 print(f"  → حدّث index.html CUR إلى {new_ver}")
         # 4) app.js CUR للتنظيف
         app_path = BASE / "app.js"
         if app_path.exists():
             at = app_path.read_text(encoding="utf-8")
             at2 = re.sub(r'const CUR\s*=\s*"[^"]*"', f'const CUR="{new_ver}"', at)
-            at2 = re.sub(r'const CUR\s*=\s*"[^"]*"', f'const CUR="{new_ver}"', at2)
-            # app.js autoClean CUR
-            at2 = re.sub(r'const CUR\s*=\s*"[^"]*"', f'const CUR="{new_ver}"', at2)
-            at2 = re.sub(r'CUR="[^"]*"', f'CUR="{new_ver}"', at2) if 'CUR=' in at2 else at2
-            # تحديداً السطر const CUR="3.6.0"
-            at2 = re.sub(r'CUR="[^"]*"', f'CUR="{new_ver}"', at2)
+            # محاولة ثانية للتغطية
+            if at2==at:
+                at2 = re.sub(r'CUR="[^"]*"', f'CUR="{new_ver}"', at2)
             if at2!=at:
                 app_path.write_text(at2, encoding="utf-8")
+                updated_files.append("app.js")
                 print(f"  → حدّث app.js CUR إلى {new_ver}")
+        # 5) protPhone config.xml + package.json versionCode
+        try:
+            cfg_path = BASE / "protPhone/config.xml"
+            if cfg_path.exists():
+                ct = cfg_path.read_text(encoding="utf-8")
+                ct2 = re.sub(r'android-versionCode="\d+"', f'android-versionCode="{40000+new_build}"', ct)
+                ct2 = re.sub(r'version="\d+\.\d+\.\d+"', f'version="{new_ver}.0"', ct2)
+                if ct2!=ct:
+                    cfg_path.write_text(ct2, encoding="utf-8")
+                    print(f"  → حدّث protPhone/config.xml إلى {new_ver}.0 ({40000+new_build})")
+            pkg_path = BASE / "protPhone/package.json"
+            if pkg_path.exists():
+                import json as _js
+                pj = _js.loads(pkg_path.read_text(encoding="utf-8"))
+                if pj.get("version") != f"{new_ver}.0":
+                    pj["version"] = f"{new_ver}.0"
+                    pkg_path.write_text(_js.dumps(pj, ensure_ascii=False, indent=2), encoding="utf-8")
+                    print(f"  → حدّث protPhone/package.json إلى {new_ver}.0")
+        except Exception as e2:
+            print(f"  ⚠ config bump fail {e2}")
     except Exception as e:
         print(f"  ⚠ فشل تحديث CUR: {e}")
 
+    # إعادة حساب الهاش بعد تحديث الملفات (مهم: وإلا الهاش قديم)
+    if updated_files:
+        for fname in updated_files:
+            fp = BASE / fname
+            if fp.exists() and fp.is_file():
+                try:
+                    files_hash[fname] = sha256_file(fp)
+                    print(f"  → أعيد هاش {fname}")
+                except Exception:
+                    pass
+        # أيضاً حدّث نسخ protPhone/www مباشرة بعد إعادة الهاش
     data["version"] = new_ver
     data["build"] = new_build
     data["date"] = datetime.datetime.now().isoformat(timespec="seconds")

@@ -2,7 +2,7 @@
 // يعمل في المتصفح و Cordova (file://) بدون الحاجة لإعادة بناء APK
 // الفكرة: يفحص version.json من السيرفر، لو نسخة جديدة يحمل الملفات ويطبقها
 (function(){
-  const CURRENT_VERSION = "4.4"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
+  const CURRENT_VERSION = "4.5"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
   const STORAGE_KEY_VERSION = "ota_version";
   const STORAGE_KEY_IGNORE = "ota_ignore_version";
   const CHECK_INTERVAL_MS = 5 * 60 * 1000; // فحص كل 5 دقائق + عند كل فتح (كان ساعة)
@@ -123,16 +123,15 @@
     urls.push(api + '/api/app_version');
     urls.push(api + '/version.json');
     urls.push('./version.json');
-    // لو مفتوح عبر https (GitHub Pages مثلاً) جرب نفس الـ origin
     if(location.origin && location.origin !== 'null' && location.origin !== 'file://'){
       urls.push(location.origin + '/version.json');
     }
-    // --- عبر الإنترنت (GitHub Raw) هو المصدر الوحيد عند انطفاء اللابتوب ---
-    // (تمت إزالة روابط Cloudflare/Catbox القديمة المنتهية لتجنب التضارب)
-    // --- عبر الإنترنت (GitHub Raw) — يعمل حتى لو اللابتوب مطفي (بعد push) ---
+    // GitHub Raw — المصدر الوحيد عند انطفاء اللابتوب (بعد push)
+    // الملفات في جذر الريبو (phone app هو الريبو نفسه)، لذا المسار الصحيح هو /main/version.json
     const PUBLIC_RAW = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main/version.json';
     urls.push(PUBLIC_RAW);
-    urls.push(PUBLIC_RAW.replace('/version.json','/phone%20app/version.json'));
+    // حاول أيضاً عبر jsDelivr كـ fallback CDN أسرع داخل WebView
+    urls.push('https://cdn.jsdelivr.net/gh/ABDelrahmanmohamed555/barcode_phoneapp@main/version.json');
     return [...new Set(urls)];
   }
 
@@ -223,9 +222,14 @@
 
   async function fetchVersion(url){
     const controller = new AbortController();
-    const t = setTimeout(()=>controller.abort(), 7000);
+    const t = setTimeout(()=>controller.abort(), 9000);
     try{
-      const r = await fetch(url + (url.includes('?')?'&':'?') + '_t=' + Date.now(), {cache:'no-store', signal: controller.signal, headers:{'Cache-Control':'no-cache'}});
+      const r = await fetch(url + (url.includes('?')?'&':'?') + '_t=' + Date.now(), {
+        cache:'no-store',
+        signal: controller.signal,
+        headers:{'Cache-Control':'no-cache','Accept':'application/json'},
+        mode: 'cors'
+      });
       clearTimeout(t);
       if(!r.ok) throw new Error('HTTP '+r.status);
       const j = await r.json();
@@ -271,11 +275,14 @@
   }
   async function checkGitHubUpdates(){
     const ctrl = new AbortController();
-    const t = setTimeout(()=> ctrl.abort(), 8000);
+    const t = setTimeout(()=> ctrl.abort(), 10000);
     try{
-      const r = await fetch(GITHUB_COMMITS_API + '&_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal, headers:{'Accept':'application/vnd.github.v3+json'}});
+      const r = await fetch(GITHUB_COMMITS_API + '&_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal, headers:{'Accept':'application/vnd.github.v3+json'}, mode:'cors'});
       clearTimeout(t);
-      if(!r.ok) throw new Error('GitHub '+r.status);
+      if(!r.ok){
+        if(r.status===403) console.warn('[OTA] GitHub rate limit 403 — سيعتمد على version.json مباشرة');
+        throw new Error('GitHub '+r.status);
+      }
       const commits = await r.json();
       if(!Array.isArray(commits)) return null;
       const lastSha = (()=>{ try{ return localStorage.getItem(STORAGE_GITHUB_SHA); }catch(e){return null;} })();
@@ -283,15 +290,12 @@
         const msg = c.commit && c.commit.message ? c.commit.message : '';
         if(isUpdateCommit(msg)){
           const sha = c.sha;
-          if(sha === lastSha) return null; // نفس آخر تحديث تم تجاهله/تثبيته
-          // وجد تحديث جديد
+          if(sha === lastSha) return null;
           const verFromMsg = extractVersionFromCommit(msg);
           console.log('[OTA] وجد commit تحديث', sha.slice(0,7), msg, '→', verFromMsg);
-          // حاول جلب version.json من هذا الـ commit عبر raw
           try{
             const rawUrl = `${GITHUB_RAW_BASE}/version.json?_t=${Date.now()}`;
             const verData = await fetchVersion(rawUrl);
-            // لو version.json لم يُحدَّث، استخدم الرقم من commit كـ version
             if(verFromMsg && compareVersions(verFromMsg, verData.version) > 0){
               verData.version = verFromMsg;
             }
@@ -301,7 +305,7 @@
             if(verFromMsg) verData.version = verFromMsg;
             return verData;
           }catch(e){
-            // لو فشل جلب version.json، استخدم الرقم من commit كـ version
+            console.log('[OTA] raw fetch fail, use commit version', e.message);
             const v = verFromMsg || msg.trim();
             return {version: v, build: Date.now(), notes: msg, files: null, _sourceBase: GITHUB_RAW_BASE, _githubSha: sha, _commitMsg: msg};
           }
@@ -397,12 +401,11 @@
       _pendingData = bestData;
       _pendingData._sourceBase = bestUrl.replace(/\/version\.json.*$/,'').replace(/\/api\/app_version.*$/,'');
       if(bestUrl.includes('/api/app_version')) _pendingData._sourceBase = getApiBase();
-      // للـ GitHub raw احفظ base الصحيح
       if(bestUrl.includes('raw.githubusercontent.com')){
-        _pendingData._sourceBase = bestUrl.replace(/\/version\.json.*$/,'').replace('/phone%20app','').replace(/\/$/,'');
-        // لكن الملفات في /phone app/ على GitHub، نحتاج base يشمل المسار
-        if(bestUrl.includes('/phone%20app/')) _pendingData._sourceBase = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main/phone%20app';
-        else _pendingData._sourceBase = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main';
+        _pendingData._sourceBase = 'https://raw.githubusercontent.com/ABDelrahmanmohamed555/barcode_phoneapp/main';
+      } else if(bestUrl.includes('cdn.jsdelivr.net')){
+        // jsDelivr base
+        _pendingData._sourceBase = 'https://cdn.jsdelivr.net/gh/ABDelrahmanmohamed555/barcode_phoneapp@main';
       }
       showBanner(bestData);
       if(manual) toast('تحديث جديد ' + bestData.version + ' متاح');
