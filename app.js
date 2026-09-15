@@ -466,7 +466,7 @@ function renderTable(){
     const row=document.createElement('div'); row.className='row-item';
     row.innerHTML=`
       <span class="w-num">${seq}</span>
-      <span class="w-num">${p.stock}</span>
+      <span class="w-num" style="color:#fff">${p.stock}</span>
       <span class="price">${parseFloat(p.price).toFixed(2)}</span>
       <span>${p.category}</span>
       <span style="font-size:11px">${p.barcode}</span>
@@ -562,7 +562,7 @@ function renderUserTable(){
     const row=document.createElement('div'); row.className='row-item';
     row.innerHTML=`
       <span class="w-num">${seq}</span>
-      <span class="w-num">${p.stock}</span>
+      <span class="w-num" style="color:#fff">${p.stock}</span>
       <span class="price">${parseFloat(p.price).toFixed(2)}</span>
       <span>${p.category}</span>
       <span style="font-size:11px;flex:1.2">${p.barcode}</span>
@@ -931,7 +931,7 @@ function renderShortageTable(){
     row.style.borderRight=`3px solid ${stockColor}`;
     row.innerHTML=`
       <span class="w-num">${seq}</span>
-      <span class="w-num" style="color:${stockColor};background:${stockBg};border-radius:4px;padding:2px 0;font-weight:900">${stockVal}</span>
+      <span class="w-num" style="color:#fff;background:${stockBg};border-radius:4px;padding:2px 0;font-weight:900">${stockVal}</span>
       <span class="price">${parseFloat(p.price).toFixed(2)}</span>
       <span>${p.category}</span>
       <span style="font-size:11px;flex:1.2">${p.barcode}</span>
@@ -1590,7 +1590,7 @@ setInterval(backgroundAutoClean, 90000); // كان 45ث → 90ث لتقليل ا
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="4.11";
+    const CUR="4.12";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
