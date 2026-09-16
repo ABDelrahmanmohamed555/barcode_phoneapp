@@ -762,22 +762,31 @@ function hideCacheButton(){
 }
 function ensurePlusButtonExists(){
   try{
-    if(document.getElementById('plusBtn')) return;
+    if(document.getElementById('plusBtn')) {
+      const existing = document.getElementById('plusBtn');
+      const syncBtn = document.querySelector('.sync-actions button[onclick*="syncFromApi"]');
+      if(syncBtn && existing && existing.nextElementSibling===syncBtn){
+        syncBtn.parentNode.insertBefore(existing, syncBtn);
+        existing.style.marginInlineStart='';
+        existing.style.marginInlineEnd='22px';
+      }
+      return;
+    }
     const syncActions = document.querySelector('.sync-actions');
     if(!syncActions) return;
-    const syncBtn = syncActions.querySelector('button[onclick*=\"syncFromApi\"]');
+    const syncBtn = syncActions.querySelector('button[onclick*="syncFromApi"]');
     const btn = document.createElement('button');
     btn.id='plusBtn';
     btn.title='إضافة';
     btn.textContent='+';
-    btn.style.cssText='background:transparent;color:var(--accent);border:1px solid var(--accent);width:34px;height:32px;border-radius:8px;font-size:20px;font-weight:900;line-height:1;display:grid;place-items:center;margin-inline-start:14px';
+    btn.style.cssText='background:transparent;color:var(--accent);border:1px solid var(--accent);width:34px;height:32px;border-radius:8px;font-size:20px;font-weight:900;line-height:1;display:grid;place-items:center;margin-inline-end:22px';
     btn.onclick = ()=> { try{ showToast('قريباً — وظيفة +','info'); }catch(e){} };
-    if(syncBtn && syncBtn.nextSibling){
-      syncBtn.parentNode.insertBefore(btn, syncBtn.nextSibling);
+    if(syncBtn){
+      syncBtn.parentNode.insertBefore(btn, syncBtn);
     } else {
-      syncActions.insertBefore(btn, syncActions.firstChild.nextSibling || null);
+      syncActions.insertBefore(btn, syncActions.firstChild);
     }
-    console.log('[PLUS] btn injected via JS OTA ✓');
+    console.log('[PLUS] btn injected via JS OTA ✓ (يمين)');
   }catch(e){ console.warn('[PLUS] inject fail', e); }
 }
 function ensureShortageViewExists(){
@@ -1610,7 +1619,7 @@ setInterval(backgroundAutoClean, 90000); // كان 45ث → 90ث لتقليل ا
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="4.13";
+    const CUR="4.14";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');
