@@ -158,6 +158,8 @@ let _lastSyncTime = 0;
 let _consecutiveEmptyCount = 0;
 let _lastSuccessTime = Date.now();
 let _lastStatusChange = 0;
+let _rtDebounceTimer = null;
+let _rtPendingData = null;
 function _clearSyncRetry(){
   if(_syncRetryId){ clearTimeout(_syncRetryId); _syncRetryId=null; }
 }
@@ -275,6 +277,10 @@ async function syncFromApi(opts={}){
   if(!force && now - _lastSyncTime < 800){
     return;
   }
+  if(typeof navigator !== 'undefined' && navigator.onLine === false){
+    _setSyncState('غير متصل - تحقق من الإنترنت','#c73e3e','error');
+    return;
+  }
   if(!window.SupabaseSync || !window.SupabaseSync.isConfigured()){
     _setSyncState('غير مهيأ - Supabase','#c8943a','idle');
     return;
@@ -367,10 +373,22 @@ function initSupabaseRealtime(){
   }catch(e){}
   try{
     const ok = SupabaseSync.subscribeRealtime((newData)=>{
-      console.log('[Supabase RT] onChange', newData.length);
-      _applyProducts(newData, 'Supabase RT');
-      _setBadge(products.length);
-      // (الإشعارات معطلة)
+      _rtPendingData = newData;
+      if(_rtDebounceTimer) clearTimeout(_rtDebounceTimer);
+      _rtDebounceTimer = setTimeout(()=>{
+        const dataToApply = _rtPendingData;
+        _rtPendingData = null;
+        _rtDebounceTimer = null;
+        if(!dataToApply) return;
+        if(_syncInProgress){
+          console.log('[RT] syncInProgress — تأجيل RT update');
+          setTimeout(()=>{ try{ _applyProducts(dataToApply, 'Supabase RT'); _setBadge(products.length); }catch(e){} }, 700);
+        } else {
+          console.log('[Supabase RT] onChange debounced', dataToApply.length);
+          _applyProducts(dataToApply, 'Supabase RT');
+          _setBadge(products.length);
+        }
+      }, 450);
     });
     if(ok){
       _supaRealtimeActive = true;
@@ -401,20 +419,26 @@ function _checkRealtimeHealth(){
 }
 
 
+function _getEl(id){ try{ return document.getElementById(id); }catch(e){ return null; } }
+function _isEligible(p){ try{ const price=parseFloat(p.price); const stock=parseInt(p.stock); return price!==0 && !isNaN(price) && p.price!=='' && p.price!==null && !isNaN(stock) && stock>0; }catch(e){ return false; } }
+function _filterEligible(arr){ try{ return (arr||[]).filter(_isEligible); }catch(e){ return []; } }
 function genBarcode(){
   const prefix="880";
   let base=prefix+Array.from({length:9},()=>Math.floor(Math.random()*10)).join("");
   base=base.slice(0,12);
   let sum=0; for(let i=0;i<12;i++) sum+= parseInt(base[i])*(i%2?3:1);
   const check=(10-(sum%10))%10;
-  document.getElementById('pBarcode').value=base+check;
-  document.getElementById('barcodePreview').textContent="معاينة: "+(document.getElementById('pBarcode').value);
+  const bcEl=_getEl('pBarcode'); if(bcEl) bcEl.value=base+check;
+  const prev=_getEl('barcodePreview'); if(prev) prev.textContent="معاينة: "+(bcEl? bcEl.value : base+check);
 }
 function clearForm(){
-  pName.value=""; pPrice.value=""; pStock.value=""; pDesc.value=""; genBarcode();
+  const nEl=_getEl('pName'), prEl=_getEl('pPrice'), stEl=_getEl('pStock'), dEl=_getEl('pDesc');
+  if(nEl) nEl.value=""; if(prEl) prEl.value=""; if(stEl) stEl.value=""; if(dEl) dEl.value=""; try{ genBarcode(); }catch(e){}
 }
 async function saveProduct(){
-  const name=pName.value.trim(), barcode=pBarcode.value.trim(), cat=pCat.value, price=parseFloat(pPrice.value||0), stock=parseInt(pStock.value||0), desc=pDesc.value.trim();
+  const nEl=_getEl('pName'), bcEl=_getEl('pBarcode'), catEl=_getEl('pCat'), prEl=_getEl('pPrice'), stEl=_getEl('pStock'), dEl=_getEl('pDesc');
+  if(!nEl || !bcEl || !catEl || !prEl || !stEl){ return showToast('واجهة الإضافة غير جاهزة','error'); }
+  const name=nEl.value.trim(), barcode=bcEl.value.trim(), cat=catEl.value, price=parseFloat(prEl.value||0), stock=parseInt(stEl.value||0), desc=dEl? dEl.value.trim() : '';
   if(!name) return showToast("ادخل اسم المنتج",'warning');
   try{
     const saved = await apiPostProduct({name, barcode, category:cat, price, stock, description:desc});
@@ -481,7 +505,19 @@ function renderTable(){
   });
   if(filtered.length===0) body.innerHTML=`<div style="text-align:center;color:#9e9e9e;padding:20px">لا توجد منتجات</div>`;
 }
-function editProd(id){ const p=products.find(x=>x.id===id); if(!p) return; pName.value=p.name; pBarcode.value=p.barcode; pCat.value=p.category; pPrice.value=p.price; pStock.value=p.stock; pDesc.value=p.description||p.desc||""; window.scrollTo(0,0); }
+function editProd(id){ const p=products.find(x=>x.id===id); if(!p) return; const nEl=_getEl('pName'), bcEl=_getEl('pBarcode'), catEl=_getEl('pCat'), prEl=_getEl('pPrice'), stEl=_getEl('pStock'), dEl=_getEl('pDesc'); if(nEl) nEl.value=p.name; if(bcEl) bcEl.value=p.barcode; if(catEl) catEl.value=p.category; if(prEl) prEl.value=p.price; if(stEl) stEl.value=p.stock; if(dEl) dEl.value=p.description||p.desc||""; try{ switchRole('admin'); }catch(e){} try{ window.scrollTo(0,0); }catch(e){} }
+function showBarcode(id){
+  try{
+    const p=products.find(x=>x.id===id);
+    if(!p) return showToast('المنتج غير موجود','error');
+    const barcode = p.barcode || '';
+    const preview=_getEl('barcodePreview');
+    if(preview) preview.textContent='باركود: '+barcode;
+    showToast('باركود: '+barcode+' — '+p.name,'info',3000);
+    console.log('[BARCODE] show', id, barcode);
+  }catch(e){ console.warn('showBarcode fail', e.message); try{ showToast('خطأ عرض الباركود','error'); }catch(_){} }
+}
+window.showBarcode = showBarcode;
 function delProd(id){
   const toDel = products.find(p=> p.id===id);
   const bc = toDel ? toDel.barcode : null;
@@ -538,7 +574,7 @@ function switchRole(r){
   }
 }
 function renderUserTable(){
-  const q=(document.getElementById('searchUser').value||"").trim().toLowerCase();
+  const q=((_getEl('searchUser')?.value)||"").trim().toLowerCase();
   const body=document.getElementById('userTableBody');
   if(!body) return;
   try{
@@ -624,6 +660,10 @@ document.addEventListener('keydown', (e)=>{
   if(e.key==='Escape'){
     const m=document.getElementById('editModal');
     if(m && m.style.display!=='none') closeEditModal();
+    const b=document.getElementById('bulkModal');
+    if(b && b.style.display!=='none') closeBulkModal();
+    const d=document.getElementById('discountModal');
+    if(d && d.style.display!=='none') closeDiscountModal();
   }
 });
 async function saveEditModal(){
@@ -764,6 +804,19 @@ function ensurePlusButtonExists(){
   try{
     if(document.getElementById('plusBtn')) {
       const existing = document.getElementById('plusBtn');
+      // حدث وظيفته لفتح Bulk — لا تحركه إذا كان في مكانه الصحيح لتجنب حلقة مراقبة
+      try{
+        if(typeof existing.onclick !== 'function' || !String(existing.onclick).includes('openBulkModal')){
+          existing.onclick = ()=> { try{ openBulkModal(); }catch(e){} };
+        }
+        if(existing.title !== 'زيادة سعر جماعية') existing.title='زيادة سعر جماعية';
+        // صحح الستايل فقط إذا اختلف
+        if(existing.style.marginInlineEnd !== '22px'){
+          existing.style.marginInlineStart='';
+          existing.style.marginInlineEnd='22px';
+        }
+      }catch(e){}
+      // لا تعيد ترتيب DOM إذا كان الزر موجودًا بالفعل — كان يسبب حلقة MutationObserver لانهائية
       return;
     }
     const syncActions = document.querySelector('.sync-actions');
@@ -771,10 +824,10 @@ function ensurePlusButtonExists(){
     const syncBtn = syncActions.querySelector('button[onclick*="syncFromApi"]');
     const btn = document.createElement('button');
     btn.id='plusBtn';
-    btn.title='إضافة';
+    btn.title='زيادة سعر جماعية';
     btn.textContent='+';
     btn.style.cssText='background:transparent;color:var(--accent);border:1px solid var(--accent);width:34px;height:32px;border-radius:8px;font-size:20px;font-weight:900;line-height:1;display:grid;place-items:center;margin-inline-end:22px';
-    btn.onclick = ()=> { try{ showToast('قريباً — وظيفة +','info'); }catch(e){} };
+    btn.onclick = ()=> { try{ openBulkModal(); }catch(e){} };
     if(syncBtn){
       syncBtn.parentNode.insertBefore(btn, syncBtn);
     } else {
@@ -827,18 +880,698 @@ function ensureShortageViewExists(){
     }
   }catch(e){}
 }
-// شغّل فوراً و عند الجاهزية (لضمان بعد OTA)
-try{ ensureEditModalExists(); ensureShortageViewExists(); ensurePlusButtonExists(); hideCacheButton(); }catch(e){}
-if(document.readyState==='loading'){
-  document.addEventListener('DOMContentLoaded', ()=>{ try{ ensureEditModalExists(); ensureShortageViewExists(); ensurePlusButtonExists(); hideCacheButton(); }catch(e){} });
-} else {
-  setTimeout(()=>{ try{ ensureEditModalExists(); ensureShortageViewExists(); ensurePlusButtonExists(); hideCacheButton(); }catch(e){} }, 300);
+function ensureBulkModalExists(){
+  if(document.getElementById('bulkModal')) return;
+  try{
+    const modal = document.createElement('div');
+    modal.id='bulkModal';
+    modal.className='edit-modal';
+    modal.style.display='none';
+    modal.onclick = function(e){ if(e.target===modal) closeBulkModal(); };
+    modal.innerHTML = `
+    <div class="edit-modal-card" role="dialog" aria-modal="true" aria-labelledby="bulkModalTitle" style="max-width:460px">
+      <div class="edit-modal-header">
+        <span id="bulkModalTitle">زيادة سعر جماعية</span>
+        <button class="edit-modal-close" onclick="closeBulkModal()" aria-label="إغلاق">✕</button>
+      </div>
+      <div class="edit-modal-body">
+        <label class="label">نوع الزيادة</label>
+        <select id="bulkType" class="input">
+          <option value="percent">نسبة مئوية %</option>
+          <option value="fixed">مبلغ ثابت (جنيه)</option>
+        </select>
+        <label class="label">قيمة الزيادة (أرقام فقط)</label>
+        <input id="bulkValue" class="input" type="number" inputmode="decimal" placeholder="مثال: 10" oninput="this.value=this.value.replace(/[^0-9.]/g,'').replace(/(\\..*)\\./g,'$1')" />
+        <div style="font-size:11px;color:#9e9e9e;margin-top:4px">تُطبق فقط على المنتجات المسعّرة ومتاحها &gt;0 — غير ذلك يُترك كما هو</div>
+        <label class="label" style="margin-top:14px">نطاق التطبيق</label>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label style="display:flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer">
+            <input type="radio" name="bulkScope" value="all" checked onchange="onBulkScopeChange()" />
+            <span>كل المنتجات</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer">
+            <input type="radio" name="bulkScope" value="category" onchange="onBulkScopeChange()" />
+            <span>تصنيف معين</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer">
+            <input type="radio" name="bulkScope" value="product" onchange="onBulkScopeChange()" />
+            <span>منتج معين</span>
+          </label>
+        </div>
+        <div id="bulkCategoryWrap" style="display:none;margin-top:10px">
+          <label class="label">اختر التصنيف</label>
+          <select id="bulkCategory" class="input"></select>
+        </div>
+        <div id="bulkProductWrap" style="display:none;margin-top:10px">
+          <label class="label">ابحث عن المنتج (بالاسم أو الباركود)</label>
+          <input id="bulkProductSearch" class="input" placeholder="اكتب للبحث..." oninput="onBulkProductSearch(this.value)" autocomplete="off"/>
+          <div id="bulkProductList" style="max-height:160px;overflow-y:auto;margin-top:6px;border:1px solid var(--border);border-radius:8px;display:none;background:var(--bg-input)"></div>
+          <div id="bulkProductSelected" style="margin-top:8px;padding:8px;background:rgba(200,148,58,.12);border:1px solid var(--accent);border-radius:8px;display:none;font-size:12px"></div>
+        </div>
+        <div id="bulkPreview" style="margin-top:12px;padding:10px;background:rgba(45,138,78,.1);border:1px solid rgba(45,138,78,.25);border-radius:8px;display:none;font-size:12px;color:#a8d5b5"></div>
+      </div>
+      <div class="edit-modal-footer">
+        <button class="btn btn-ghost" style="flex:1" onclick="closeBulkModal()">إلغاء</button>
+        <button class="btn btn-success" style="flex:1.2" onclick="applyBulkIncrease()">تطبيق الزيادة ✓</button>
+      </div>
+      <div id="bulkHint" style="text-align:center;font-size:11px;color:#9e9e9e;padding:0 12px 10px;display:none"></div>
+    </div>`;
+    document.body.appendChild(modal);
+    console.log('[BULK] modal injected via JS OTA ✓');
+  }catch(e){ console.warn('[BULK] inject fail', e); }
 }
-// راقب DOM لو تأخر تحميل sync-bar
+let _bulkSelectedProductId = null;
+let _bulkSelectedProductBarcode = null;
+function openBulkModal(){
+  try{ ensureBulkModalExists(); }catch(e){}
+  const modal=document.getElementById('bulkModal');
+  if(!modal){ showToast('النافذة غير جاهزة','error'); return; }
+  const typeEl=document.getElementById('bulkType');
+  const valEl=document.getElementById('bulkValue');
+  const hintEl=document.getElementById('bulkHint');
+  const previewEl=document.getElementById('bulkPreview');
+  if(typeEl) typeEl.value='percent';
+  if(valEl) valEl.value='';
+  if(hintEl){ hintEl.style.display='none'; hintEl.textContent=''; }
+  if(previewEl) previewEl.style.display='none';
+  try{
+    const radios=document.querySelectorAll('input[name="bulkScope"]');
+    radios.forEach(r=> r.checked = r.value==='all');
+  }catch(e){}
+  _bulkSelectedProductId=null; _bulkSelectedProductBarcode=null;
+  const selDiv=document.getElementById('bulkProductSelected');
+  if(selDiv) selDiv.style.display='none';
+  const listDiv=document.getElementById('bulkProductList');
+  if(listDiv) listDiv.style.display='none';
+  const searchEl=document.getElementById('bulkProductSearch');
+  if(searchEl) searchEl.value='';
+  try{
+    const catSel=document.getElementById('bulkCategory');
+    if(catSel){
+      const cats=[...new Set(products.map(p=> p.category||'عام'))].sort();
+      const allCats=['عام','أجهزة','قطع غيار','إكسسوارات','أخرى'];
+      const uniq=[...new Set([...allCats, ...cats])];
+      catSel.innerHTML=uniq.map(c=> `<option value="${c.replace(/"/g,'&quot;')}">${c}</option>`).join('');
+    }
+  }catch(e){}
+  onBulkScopeChange();
+  modal.style.display='flex';
+  document.body.style.overflow='hidden';
+  setTimeout(()=>{ const v=document.getElementById('bulkValue'); if(v) v.focus(); }, 80);
+}
+function closeBulkModal(){
+  const modal=document.getElementById('bulkModal');
+  if(modal) modal.style.display='none';
+  document.body.style.overflow='';
+}
+function onBulkScopeChange(){
+  const scope = (document.querySelector('input[name="bulkScope"]:checked')||{}).value || 'all';
+  const catWrap=document.getElementById('bulkCategoryWrap');
+  const prodWrap=document.getElementById('bulkProductWrap');
+  if(catWrap) catWrap.style.display = scope==='category' ? 'block' : 'none';
+  if(prodWrap) prodWrap.style.display = scope==='product' ? 'block' : 'none';
+  updateBulkPreview();
+}
+function onBulkProductSearch(q){
+  const listEl=document.getElementById('bulkProductList');
+  q=(q||'').trim().toLowerCase();
+  if(!q){
+    if(listEl) listEl.style.display='none';
+    return;
+  }
+  const filtered = products.filter(p=> p.name.toLowerCase().includes(q) || p.barcode.includes(q)).slice(0,12);
+  if(filtered.length===0){
+    if(listEl){ listEl.innerHTML='<div style="padding:10px;color:#9e9e9e;font-size:12px">لا نتائج</div>'; listEl.style.display='block'; }
+    return;
+  }
+  if(listEl){
+    listEl.innerHTML = filtered.map(p=> `<div onclick="selectBulkProduct(${p.id})" style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span>${p.name}</span><span style="font-size:11px;color:#9e9e9e">${p.barcode} — ${parseFloat(p.price).toFixed(2)}ج</span></div>`).join('');
+    listEl.style.display='block';
+  }
+}
+function selectBulkProduct(id){
+  const p=products.find(x=> x.id===id);
+  if(!p) return;
+  _bulkSelectedProductId=p.id;
+  _bulkSelectedProductBarcode=p.barcode;
+  const selEl=document.getElementById('bulkProductSelected');
+  if(selEl){
+    selEl.textContent = `تم اختيار: ${p.name} — ${p.barcode} — ${parseFloat(p.price).toFixed(2)} جنيه`;
+    selEl.style.display='block';
+  }
+  const listEl=document.getElementById('bulkProductList');
+  if(listEl) listEl.style.display='none';
+  const searchEl=document.getElementById('bulkProductSearch');
+  if(searchEl) searchEl.value = p.name;
+  updateBulkPreview();
+}
+function updateBulkPreview(){
+  const previewEl=document.getElementById('bulkPreview');
+  if(!previewEl) return;
+  const typeEl=document.getElementById('bulkType');
+  const valEl=document.getElementById('bulkValue');
+  const type=typeEl? typeEl.value : 'percent';
+  const val=parseFloat(valEl? valEl.value : '');
+  if(isNaN(val) || val<=0){
+    previewEl.style.display='none';
+    return;
+  }
+  const scope=(document.querySelector('input[name="bulkScope"]:checked')||{}).value || 'all';
+  let count=0, example='', skipped=0;
+  if(scope==='all'){
+    const eligible=_filterEligible(products);
+    count=eligible.length;
+    skipped=products.length-eligible.length;
+    if(count>0){
+      const p=eligible[0];
+      const newPrice = type==='percent' ? (parseFloat(p.price)+parseFloat(p.price)*val/100) : (parseFloat(p.price)+val);
+      example = `${p.name}: ${parseFloat(p.price).toFixed(2)} → ${newPrice.toFixed(2)}`;
+    } else {
+      example='لا يوجد منتجات مسعرة ومتاحة >0';
+    }
+  } else if(scope==='category'){
+    const cat=document.getElementById('bulkCategory')?.value||'عام';
+    const filtered=products.filter(p=> (p.category||'عام')===cat);
+    const eligible=_filterEligible(filtered);
+    count=eligible.length;
+    skipped=filtered.length-eligible.length;
+    if(count>0){
+      const p=eligible[0];
+      const newPrice = type==='percent' ? (parseFloat(p.price)+parseFloat(p.price)*val/100) : (parseFloat(p.price)+val);
+      example = `${p.name} (${cat}): ${parseFloat(p.price).toFixed(2)} → ${newPrice.toFixed(2)}`;
+    } else {
+      example='لا يوجد منتجات مسعرة ومتاحة في هذا التصنيف';
+    }
+  } else if(scope==='product'){
+    if(_bulkSelectedProductId){
+      const p=products.find(x=> x.id===_bulkSelectedProductId);
+      if(p){
+        if(!_isEligible(p)){
+          count=0;
+          example='المنتج غير مسعر أو متاحه 0 — لن يُطبق';
+        } else {
+          count=1;
+          const newPrice = type==='percent' ? (parseFloat(p.price)+parseFloat(p.price)*val/100) : (parseFloat(p.price)+val);
+          example = `${p.name}: ${parseFloat(p.price).toFixed(2)} → ${newPrice.toFixed(2)}`;
+        }
+      }
+    } else {
+      count=0;
+      example='اختر منتجاً أولاً';
+    }
+  }
+  const unit = type==='percent' ? '%' : ' جنيه';
+  let skipTxt = skipped>0 ? `<br><span style="color:#9e9e9e;font-size:11px">سيتم تخطي ${skipped} منتج غير مسعر أو متاحه 0</span>` : '';
+  previewEl.innerHTML = `سيتم تطبيق <b>${val}${unit}</b> على <b>${count}</b> منتج مسعر ومتاح>0<br><span style="color:#fff">${example}</span>${skipTxt}`;
+  previewEl.style.display='block';
+}
+async function applyBulkIncrease(){
+  const typeEl=document.getElementById('bulkType');
+  const valEl=document.getElementById('bulkValue');
+  const hintEl=document.getElementById('bulkHint');
+  const type=typeEl? typeEl.value : 'percent';
+  const rawVal=(valEl? valEl.value : '').trim();
+  if(!rawVal || !/^[0-9]+(\.[0-9]+)?$/.test(rawVal)){
+    showToast('ادخل قيمة رقمية صحيحة','warning');
+    if(valEl) valEl.focus();
+    return;
+  }
+  const val=parseFloat(rawVal);
+  if(isNaN(val) || val<=0){
+    showToast('القيمة يجب أن تكون > 0','warning');
+    return;
+  }
+  if(type==='percent' && val>1000){
+    showToast('النسبة كبيرة جداً','warning');
+    return;
+  }
+  const scope=(document.querySelector('input[name="bulkScope"]:checked')||{}).value || 'all';
+  let rawTargets=[];
+  if(scope==='all'){
+    rawTargets = products.slice();
+  } else if(scope==='category'){
+    const cat=document.getElementById('bulkCategory')?.value||'عام';
+    rawTargets = products.filter(p=> (p.category||'عام')===cat);
+    if(rawTargets.length===0) return showToast('لا يوجد منتجات في هذا التصنيف','warning');
+  } else if(scope==='product'){
+    if(!_bulkSelectedProductId) return showToast('اختر منتجاً أولاً','warning');
+    const p=products.find(x=> x.id===_bulkSelectedProductId);
+    if(!p) return showToast('المنتج غير موجود','error');
+    rawTargets=[p];
+  }
+  if(rawTargets.length===0) return showToast('لا يوجد منتجات للتطبيق','warning');
+  // فلترة: فقط المسعر ومتاح>0 — الباقي يبقى كما هو
+  let targets = _filterEligible(rawTargets);
+  const skipped = rawTargets.length - targets.length;
+  if(targets.length===0) return showToast('لا يوجد منتجات مسعرة ومتاحة >0 للتطبيق' + (skipped>0?` (تم تخطي ${skipped} غير مسعر/صفر)` : ''),'warning');
+  if(navigator.onLine===false){
+    return showToast('لا يوجد اتصال بالإنترنت - تحقق من الشبكة','error');
+  }
+  if(targets.length>500){
+    return showToast('العدد كبير جداً (>500) — قسّمه إلى فئات لتجنب الحظر','warning');
+  }
+  if(targets.length>200){
+    if(!confirm(`تحذير: سيتم تحديث ${targets.length} منتج مسعر ومتاح>0 (تخطي ${skipped}) — قد يستغرق وقتاً. هل أنت متأكد؟`)) return;
+  }
+  let confirmMsg = `تأكيد زيادة ${val}${type==='percent'?'%':' جنيه'} على ${targets.length} منتج مسعر ومتاح>0؟ سيتم تحديث السعر فقط`;
+  if(skipped>0) confirmMsg += ` (سيتم تخطي ${skipped} غير مسعر/صفر)`;
+  if(!confirm(confirmMsg)) return;
+  const btn=document.querySelector('#bulkModal .btn-success');
+  if(btn){ btn.disabled=true; btn.textContent='جاري التطبيق...'; }
+  if(hintEl){ hintEl.style.display='block'; hintEl.textContent=`جاري تحديث ${targets.length} منتج...`; hintEl.style.color='#9e9e9e'; }
+  let ok=0, fail=0;
+  for(const p of targets){
+    const oldPrice=parseFloat(p.price)||0;
+    let newPrice;
+    if(type==='percent'){
+      newPrice = oldPrice + (oldPrice * val / 100);
+    } else {
+      newPrice = oldPrice + val;
+    }
+    newPrice = Math.round(newPrice*100)/100;
+    if(newPrice<0) newPrice=0;
+    try{
+      const patch={price:newPrice, updated_at:_localNow()};
+      let updated=null;
+      if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
+        updated = await SupabaseSync.updateProduct(p.id, {...patch, barcode:p.barcode});
+      }
+      if(updated && updated.price!=null){
+        p.price=updated.price;
+      } else {
+        p.price=newPrice;
+      }
+      p.updated_at=patch.updated_at;
+      ok++;
+      if(ok%5===0){
+        _lastTableHash=""; _lastUserHash=""; _lastPricingHash=""; _lastShortageHash="";
+        try{ renderUserTable(); renderPricingTable(); renderShortageTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+        if(hintEl) hintEl.textContent=`تم ${ok}/${targets.length}...`;
+        await new Promise(r=> setTimeout(r, 80));
+      }
+    }catch(e){
+      console.warn('[BULK] fail', p.barcode, e.message);
+      fail++;
+    }
+  }
+  _syncWindowProducts();
+  try{ _updateSWBgState(); }catch(e){}
+  _lastTableHash=""; _lastUserHash=""; _lastPricingHash=""; _lastShortageHash="";
+  try{ renderUserTable(); renderPricingTable(); renderShortageTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); _setBadge(products.length); }catch(e){}
+  try{ syncPricing(); syncShortage(); }catch(e){}
+  if(btn){ btn.disabled=false; btn.textContent='تطبيق الزيادة ✓'; }
+  if(hintEl){
+    let hintTxt = `تم: ${ok} نجح، ${fail} فشل`;
+    if(typeof skipped !== 'undefined' && skipped>0) hintTxt += `، تخطي ${skipped} غير مسعر/صفر`;
+    hintEl.textContent = hintTxt;
+    hintEl.style.color = fail? '#c73e3e' : '#2d8a4e';
+  }
+  let _skippedTxt = (typeof skipped !== 'undefined' && skipped>0) ? ` (تخطي ${skipped} غير مسعر/صفر)` : '';
+  showToast(`تمت الزيادة ${val}${type==='percent'?'%':'ج'} على ${ok} منتج مسعر ومتاح>0${_skippedTxt}${fail?` (${fail} فشل)`:''}`,'success',4000);
+  setTimeout(()=> syncFromApi({force:true}), 800);
+}
+window.openBulkModal=openBulkModal; window.closeBulkModal=closeBulkModal; window.onBulkScopeChange=onBulkScopeChange; window.onBulkProductSearch=onBulkProductSearch; window.selectBulkProduct=selectBulkProduct; window.applyBulkIncrease=applyBulkIncrease;
+window.updateBulkPreview=updateBulkPreview;
+
+// ===== نظام الخصم الجماعي — مشابه للزيادة لكن بالطرح =====
+function ensureDiscountModalExists(){
+  if(document.getElementById('discountModal')) return;
+  try{
+    const modal = document.createElement('div');
+    modal.id='discountModal';
+    modal.className='edit-modal';
+    modal.style.display='none';
+    modal.onclick = function(e){ if(e.target===modal) closeDiscountModal(); };
+    modal.innerHTML = `
+    <div class="edit-modal-card" role="dialog" aria-modal="true" aria-labelledby="discountModalTitle" style="max-width:460px">
+      <div class="edit-modal-header">
+        <span id="discountModalTitle">خصم جماعي</span>
+        <button class="edit-modal-close" onclick="closeDiscountModal()" aria-label="إغلاق">✕</button>
+      </div>
+      <div class="edit-modal-body">
+        <label class="label">نوع الخصم</label>
+        <select id="discountType" class="input">
+          <option value="percent">نسبة مئوية %</option>
+          <option value="fixed">مبلغ ثابت (جنيه)</option>
+        </select>
+        <label class="label">قيمة الخصم (أرقام فقط)</label>
+        <input id="discountValue" class="input" type="number" inputmode="decimal" placeholder="مثال: 10" oninput="this.value=this.value.replace(/[^0-9.]/g,'').replace(/(\..*)\./g,'$1')" />
+        <div style="font-size:11px;color:#9e9e9e;margin-top:4px">يُطبق فقط على المسعّرة ومتاحها &gt;0 — لن يقل عن 0 جنيه وغير ذلك يُترك</div>
+        <label class="label" style="margin-top:14px">نطاق التطبيق</label>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label style="display:flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer">
+            <input type="radio" name="discountScope" value="all" checked onchange="onDiscountScopeChange()" />
+            <span>كل المنتجات</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer">
+            <input type="radio" name="discountScope" value="category" onchange="onDiscountScopeChange()" />
+            <span>تصنيف معين</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer">
+            <input type="radio" name="discountScope" value="product" onchange="onDiscountScopeChange()" />
+            <span>منتج معين</span>
+          </label>
+        </div>
+        <div id="discountCategoryWrap" style="display:none;margin-top:10px">
+          <label class="label">اختر التصنيف</label>
+          <select id="discountCategory" class="input"></select>
+        </div>
+        <div id="discountProductWrap" style="display:none;margin-top:10px">
+          <label class="label">ابحث عن المنتج (بالاسم أو الباركود)</label>
+          <input id="discountProductSearch" class="input" placeholder="اكتب للبحث..." oninput="onDiscountProductSearch(this.value)" autocomplete="off"/>
+          <div id="discountProductList" style="max-height:160px;overflow-y:auto;margin-top:6px;border:1px solid var(--border);border-radius:8px;display:none;background:var(--bg-input)"></div>
+          <div id="discountProductSelected" style="margin-top:8px;padding:8px;background:rgba(199,62,62,.12);border:1px solid #c73e3e;border-radius:8px;display:none;font-size:12px"></div>
+        </div>
+        <div id="discountPreview" style="margin-top:12px;padding:10px;background:rgba(199,62,62,.08);border:1px solid rgba(199,62,62,.25);border-radius:8px;display:none;font-size:12px;color:#e8a0a0"></div>
+      </div>
+      <div class="edit-modal-footer">
+        <button class="btn btn-ghost" style="flex:1" onclick="closeDiscountModal()">إلغاء</button>
+        <button class="btn btn-success" style="flex:1.2;background:#c73e3e;border-color:#c73e3e" onclick="applyDiscount()">تطبيق الخصم ✓</button>
+      </div>
+      <div id="discountHint" style="text-align:center;font-size:11px;color:#9e9e9e;padding:0 12px 10px;display:none"></div>
+    </div>`;
+    document.body.appendChild(modal);
+    console.log('[DISCOUNT] modal injected via JS OTA ✓');
+  }catch(e){ console.warn('[DISCOUNT] inject fail', e); }
+}
+let _discountSelectedProductId = null;
+let _discountSelectedProductBarcode = null;
+function openDiscountModal(){
+  try{ ensureDiscountModalExists(); }catch(e){}
+  const modal=document.getElementById('discountModal');
+  if(!modal){ showToast('النافذة غير جاهزة','error'); return; }
+  const typeEl=document.getElementById('discountType');
+  const valEl=document.getElementById('discountValue');
+  const hintEl=document.getElementById('discountHint');
+  const previewEl=document.getElementById('discountPreview');
+  if(typeEl) typeEl.value='percent';
+  if(valEl) valEl.value='';
+  if(hintEl){ hintEl.style.display='none'; hintEl.textContent=''; }
+  if(previewEl) previewEl.style.display='none';
+  try{
+    const radios=document.querySelectorAll('input[name="discountScope"]');
+    radios.forEach(r=> r.checked = r.value==='all');
+  }catch(e){}
+  _discountSelectedProductId=null; _discountSelectedProductBarcode=null;
+  const selDiv=document.getElementById('discountProductSelected');
+  if(selDiv) selDiv.style.display='none';
+  const listDiv=document.getElementById('discountProductList');
+  if(listDiv) listDiv.style.display='none';
+  const searchEl=document.getElementById('discountProductSearch');
+  if(searchEl) searchEl.value='';
+  try{
+    const catSel=document.getElementById('discountCategory');
+    if(catSel){
+      const cats=[...new Set(products.map(p=> p.category||'عام'))].sort();
+      const allCats=['عام','أجهزة','قطع غيار','إكسسوارات','أخرى'];
+      const uniq=[...new Set([...allCats, ...cats])];
+      catSel.innerHTML=uniq.map(c=> `<option value="${c.replace(/"/g,'&quot;')}">${c}</option>`).join('');
+    }
+  }catch(e){}
+  onDiscountScopeChange();
+  modal.style.display='flex';
+  document.body.style.overflow='hidden';
+  setTimeout(()=>{ const v=document.getElementById('discountValue'); if(v) v.focus(); }, 80);
+}
+function closeDiscountModal(){
+  const modal=document.getElementById('discountModal');
+  if(modal) modal.style.display='none';
+  document.body.style.overflow='';
+}
+function onDiscountScopeChange(){
+  const scope = (document.querySelector('input[name="discountScope"]:checked')||{}).value || 'all';
+  const catWrap=document.getElementById('discountCategoryWrap');
+  const prodWrap=document.getElementById('discountProductWrap');
+  if(catWrap) catWrap.style.display = scope==='category' ? 'block' : 'none';
+  if(prodWrap) prodWrap.style.display = scope==='product' ? 'block' : 'none';
+  updateDiscountPreview();
+}
+function onDiscountProductSearch(q){
+  const listEl=document.getElementById('discountProductList');
+  q=(q||'').trim().toLowerCase();
+  if(!q){
+    if(listEl) listEl.style.display='none';
+    return;
+  }
+  const filtered = products.filter(p=> p.name.toLowerCase().includes(q) || p.barcode.includes(q)).slice(0,12);
+  if(filtered.length===0){
+    if(listEl){ listEl.innerHTML='<div style="padding:10px;color:#9e9e9e;font-size:12px">لا نتائج</div>'; listEl.style.display='block'; }
+    return;
+  }
+  if(listEl){
+    listEl.innerHTML = filtered.map(p=> `<div onclick="selectDiscountProduct(${p.id})" style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span>${p.name}</span><span style="font-size:11px;color:#9e9e9e">${p.barcode} — ${parseFloat(p.price).toFixed(2)}ج</span></div>`).join('');
+    listEl.style.display='block';
+  }
+}
+function selectDiscountProduct(id){
+  const p=products.find(x=> x.id===id);
+  if(!p) return;
+  _discountSelectedProductId=p.id;
+  _discountSelectedProductBarcode=p.barcode;
+  const selEl=document.getElementById('discountProductSelected');
+  if(selEl){
+    selEl.textContent = `تم اختيار: ${p.name} — ${p.barcode} — ${parseFloat(p.price).toFixed(2)} جنيه`;
+    selEl.style.display='block';
+  }
+  const listEl=document.getElementById('discountProductList');
+  if(listEl) listEl.style.display='none';
+  const searchEl=document.getElementById('discountProductSearch');
+  if(searchEl) searchEl.value = p.name;
+  updateDiscountPreview();
+}
+function updateDiscountPreview(){
+  const previewEl=document.getElementById('discountPreview');
+  if(!previewEl) return;
+  const typeEl=document.getElementById('discountType');
+  const valEl=document.getElementById('discountValue');
+  const type=typeEl? typeEl.value : 'percent';
+  const val=parseFloat(valEl? valEl.value : '');
+  if(isNaN(val) || val<=0){
+    previewEl.style.display='none';
+    return;
+  }
+  const scope=(document.querySelector('input[name="discountScope"]:checked')||{}).value || 'all';
+  let count=0, example='', skipped=0;
+  if(scope==='all'){
+    const eligible=_filterEligible(products);
+    count=eligible.length;
+    skipped=products.length-eligible.length;
+    if(count>0){
+      const p=eligible[0];
+      const newPrice = type==='percent' ? Math.max(0, parseFloat(p.price) - parseFloat(p.price)*val/100) : Math.max(0, parseFloat(p.price)-val);
+      example = `${p.name}: ${parseFloat(p.price).toFixed(2)} → ${newPrice.toFixed(2)}`;
+    } else {
+      example='لا يوجد منتجات مسعرة ومتاحة >0';
+    }
+  } else if(scope==='category'){
+    const cat=document.getElementById('discountCategory')?.value||'عام';
+    const filtered=products.filter(p=> (p.category||'عام')===cat);
+    const eligible=_filterEligible(filtered);
+    count=eligible.length;
+    skipped=filtered.length-eligible.length;
+    if(count>0){
+      const p=eligible[0];
+      const newPrice = type==='percent' ? Math.max(0, parseFloat(p.price) - parseFloat(p.price)*val/100) : Math.max(0, parseFloat(p.price)-val);
+      example = `${p.name} (${cat}): ${parseFloat(p.price).toFixed(2)} → ${newPrice.toFixed(2)}`;
+    } else {
+      example='لا يوجد منتجات مسعرة ومتاحة في هذا التصنيف';
+    }
+  } else if(scope==='product'){
+    if(_discountSelectedProductId){
+      const p=products.find(x=> x.id===_discountSelectedProductId);
+      if(p){
+        if(!_isEligible(p)){
+          count=0;
+          example='المنتج غير مسعر أو متاحه 0 — لن يُطبق';
+        } else {
+          count=1;
+          const newPrice = type==='percent' ? Math.max(0, parseFloat(p.price) - parseFloat(p.price)*val/100) : Math.max(0, parseFloat(p.price)-val);
+          example = `${p.name}: ${parseFloat(p.price).toFixed(2)} → ${newPrice.toFixed(2)}`;
+        }
+      }
+    } else {
+      count=0;
+      example='اختر منتجاً أولاً';
+    }
+  }
+  const unit = type==='percent' ? '%' : ' جنيه';
+  let skipTxt = skipped>0 ? `<br><span style="color:#9e9e9e;font-size:11px">سيتم تخطي ${skipped} منتج غير مسعر أو متاحه 0</span>` : '';
+  previewEl.innerHTML = `سيتم خصم <b>${val}${unit}</b> على <b>${count}</b> منتج مسعر ومتاح>0<br><span style="color:#fff">${example}</span>${skipTxt}`;
+  previewEl.style.display='block';
+}
+async function applyDiscount(){
+  const typeEl=document.getElementById('discountType');
+  const valEl=document.getElementById('discountValue');
+  const hintEl=document.getElementById('discountHint');
+  const type=typeEl? typeEl.value : 'percent';
+  const rawVal=(valEl? valEl.value : '').trim();
+  if(!rawVal || !/^[0-9]+(\.[0-9]+)?$/.test(rawVal)){
+    showToast('ادخل قيمة رقمية صحيحة','warning');
+    if(valEl) valEl.focus();
+    return;
+  }
+  const val=parseFloat(rawVal);
+  if(isNaN(val) || val<=0){
+    showToast('القيمة يجب أن تكون > 0','warning');
+    return;
+  }
+  if(type==='percent' && (val<=0 || val>100)){
+    showToast('النسبة يجب أن تكون بين 1 و 100','warning');
+    return;
+  }
+  const scope=(document.querySelector('input[name="discountScope"]:checked')||{}).value || 'all';
+  let rawTargets=[];
+  if(scope==='all'){
+    rawTargets = products.slice();
+  } else if(scope==='category'){
+    const cat=document.getElementById('discountCategory')?.value||'عام';
+    rawTargets = products.filter(p=> (p.category||'عام')===cat);
+    if(rawTargets.length===0) return showToast('لا يوجد منتجات في هذا التصنيف','warning');
+  } else if(scope==='product'){
+    if(!_discountSelectedProductId) return showToast('اختر منتجاً أولاً','warning');
+    const p=products.find(x=> x.id===_discountSelectedProductId);
+    if(!p) return showToast('المنتج غير موجود','error');
+    rawTargets=[p];
+  }
+  if(rawTargets.length===0) return showToast('لا يوجد منتجات للتطبيق','warning');
+  let targets=_filterEligible(rawTargets);
+  const skipped=rawTargets.length-targets.length;
+  if(targets.length===0) return showToast('لا يوجد منتجات مسعرة ومتاحة >0 للتطبيق' + (skipped>0?` (تم تخطي ${skipped} غير مسعر/صفر)`:''),'warning');
+  if(navigator.onLine===false){
+    return showToast('لا يوجد اتصال بالإنترنت - تحقق من الشبكة','error');
+  }
+  if(targets.length>500){
+    return showToast('العدد كبير جداً (>500) — قسّمه إلى فئات لتجنب الحظر','warning');
+  }
+  if(targets.length>200){
+    if(!confirm(`تحذير: سيتم خصم ${targets.length} منتج مسعر ومتاح>0 (تخطي ${skipped}) — قد يستغرق وقتاً. هل أنت متأكد؟`)) return;
+  }
+  let confirmMsg=`تأكيد خصم ${val}${type==='percent'?'%':' جنيه'} على ${targets.length} منتج مسعر ومتاح>0؟ سيتم خصم السعر فقط`;
+  if(skipped>0) confirmMsg+=` (سيتم تخطي ${skipped} غير مسعر/صفر)`;
+  if(!confirm(confirmMsg)) return;
+  const btn=document.querySelector('#discountModal .btn-success');
+  if(btn){ btn.disabled=true; btn.textContent='جاري التطبيق...'; }
+  if(hintEl){ hintEl.style.display='block'; hintEl.textContent=`جاري تحديث ${targets.length} منتج...`; hintEl.style.color='#9e9e9e'; }
+  let ok=0, fail=0;
+  for(const p of targets){
+    const oldPrice=parseFloat(p.price)||0;
+    let newPrice;
+    if(type==='percent'){
+      newPrice = oldPrice - (oldPrice * val / 100);
+    } else {
+      newPrice = oldPrice - val;
+    }
+    newPrice = Math.round(newPrice*100)/100;
+    if(newPrice<0) newPrice=0;
+    try{
+      const patch={price:newPrice, updated_at:_localNow()};
+      let updated=null;
+      if(window.SupabaseSync && window.SupabaseSync.isConfigured()){
+        updated = await SupabaseSync.updateProduct(p.id, {...patch, barcode:p.barcode});
+      }
+      if(updated && updated.price!=null){
+        p.price=updated.price;
+      } else {
+        p.price=newPrice;
+      }
+      p.updated_at=patch.updated_at;
+      ok++;
+      if(ok%5===0){
+        _lastTableHash=""; _lastUserHash=""; _lastPricingHash=""; _lastShortageHash="";
+        try{ renderUserTable(); renderPricingTable(); renderShortageTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
+        if(hintEl) hintEl.textContent=`تم ${ok}/${targets.length}...`;
+        await new Promise(r=> setTimeout(r, 80));
+      }
+    }catch(e){
+      console.warn('[DISCOUNT] fail', p.barcode, e.message);
+      fail++;
+    }
+  }
+  _syncWindowProducts();
+  try{ _updateSWBgState(); }catch(e){}
+  _lastTableHash=""; _lastUserHash=""; _lastPricingHash=""; _lastShortageHash="";
+  try{ renderUserTable(); renderPricingTable(); renderShortageTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); _setBadge(products.length); }catch(e){}
+  try{ syncPricing(); syncShortage(); }catch(e){}
+  if(btn){ btn.disabled=false; btn.textContent='تطبيق الخصم ✓'; }
+  if(hintEl){
+    let hintTxt2 = `تم: ${ok} نجح، ${fail} فشل`;
+    if(typeof skipped !== 'undefined' && skipped>0) hintTxt2 += `، تخطي ${skipped} غير مسعر/صفر`;
+    hintEl.textContent = hintTxt2;
+    hintEl.style.color = fail? '#c73e3e' : '#2d8a4e';
+  }
+  let _skippedTxt2 = (typeof skipped !== 'undefined' && skipped>0) ? ` (تخطي ${skipped} غير مسعر/صفر)` : '';
+  showToast(`تم الخصم ${val}${type==='percent'?'%':'ج'} على ${ok} منتج مسعر ومتاح>0${_skippedTxt2}${fail?` (${fail} فشل)`:''}`,'success',4000);
+  setTimeout(()=> syncFromApi({force:true}), 800);
+}
+window.openDiscountModal=openDiscountModal; window.closeDiscountModal=closeDiscountModal; window.onDiscountScopeChange=onDiscountScopeChange; window.onDiscountProductSearch=onDiscountProductSearch; window.selectDiscountProduct=selectDiscountProduct; window.applyDiscount=applyDiscount;
+window.updateDiscountPreview=updateDiscountPreview;
+function ensureDiscountButtonExists(){
+  try{
+    if(document.getElementById('discountBtn')) {
+      const existing=document.getElementById('discountBtn');
+      try{
+        if(typeof existing.onclick !== 'function' || !String(existing.onclick).includes('openDiscountModal')){
+          existing.onclick = ()=> { try{ openDiscountModal(); }catch(e){} };
+        }
+        if(existing.title !== 'خصم جماعي') existing.title='خصم جماعي';
+      }catch(e){}
+      return;
+    }
+    const plusBtn=document.getElementById('plusBtn');
+    const syncActions=document.querySelector('.sync-actions');
+    if(!syncActions) return;
+    const btn=document.createElement('button');
+    btn.id='discountBtn';
+    btn.title='خصم جماعي';
+    btn.textContent='−';
+    btn.style.cssText='background:transparent;color:#c73e3e;border:1px solid #c73e3e;width:34px;height:32px;border-radius:8px;font-size:20px;font-weight:900;line-height:1;display:grid;place-items:center;margin-inline-end:22px';
+    btn.onclick = ()=> { try{ openDiscountModal(); }catch(e){} };
+    const syncBtn=syncActions.querySelector('button[onclick*="syncFromApi"]');
+    if(syncBtn){
+      syncBtn.parentNode.insertBefore(btn, syncBtn);
+    } else if(plusBtn && plusBtn.nextSibling){
+      plusBtn.parentNode.insertBefore(btn, plusBtn.nextSibling);
+    } else {
+      syncActions.insertBefore(btn, syncActions.firstChild);
+    }
+    console.log('[DISCOUNT] btn injected ✓');
+  }catch(e){ console.warn('[DISCOUNT] inject fail', e); }
+}
+// شغّل فوراً و عند الجاهزية (لضمان بعد OTA)
+try{ ensureEditModalExists(); ensureShortageViewExists(); ensureBulkModalExists(); ensureDiscountModalExists(); ensurePlusButtonExists(); ensureDiscountButtonExists(); hideCacheButton(); }catch(e){}
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded', ()=>{ try{ ensureEditModalExists(); ensureShortageViewExists(); ensureBulkModalExists(); ensureDiscountModalExists(); ensurePlusButtonExists(); ensureDiscountButtonExists(); hideCacheButton(); }catch(e){} });
+} else {
+  setTimeout(()=>{ try{ ensureEditModalExists(); ensureShortageViewExists(); ensureBulkModalExists(); ensureDiscountModalExists(); ensurePlusButtonExists(); ensureDiscountButtonExists(); hideCacheButton(); }catch(e){} }, 300);
+}
+// راقب DOM لو تأخر تحميل sync-bar — مع منع حلقة لانهائية (debounce + فصل مبكر)
 try{
-  const obs = new MutationObserver(()=>{ hideCacheButton(); ensureShortageViewExists(); ensurePlusButtonExists(); });
+  let _obsPending=false;
+  const obs = new MutationObserver(()=>{
+    if(_obsPending) return;
+    _obsPending=true;
+    setTimeout(()=>{
+      _obsPending=false;
+      try{ hideCacheButton(); ensureShortageViewExists(); ensurePlusButtonExists(); ensureBulkModalExists(); ensureDiscountModalExists(); ensureDiscountButtonExists(); }catch(e){}
+      try{
+        if(document.getElementById('editModal') && document.getElementById('bulkModal') && document.getElementById('discountModal') && document.getElementById('plusBtn') && document.getElementById('discountBtn') && document.getElementById('viewShortage')){
+          obs.disconnect();
+        }
+      }catch(e){}
+    }, 250);
+  });
   obs.observe(document.documentElement, {childList:true, subtree:true});
-  setTimeout(()=> obs.disconnect(), 8000);
+  setTimeout(()=> { try{ obs.disconnect(); }catch(e){} }, 8000);
+}catch(e){}
+try{
+  document.addEventListener('input', (e)=>{
+    if(e.target && (e.target.id==='bulkValue' || e.target.id==='bulkType' || e.target.id==='bulkCategory')) updateBulkPreview();
+    if(e.target && (e.target.id==='discountValue' || e.target.id==='discountType' || e.target.id==='discountCategory')) updateDiscountPreview();
+  });
+  document.addEventListener('change', (e)=>{
+    if(e.target && (e.target.id==='bulkType' || e.target.name==='bulkScope')) setTimeout(updateBulkPreview, 50);
+    if(e.target && (e.target.id==='discountType' || e.target.name==='discountScope')) setTimeout(updateDiscountPreview, 50);
+  });
 }catch(e){}
 function syncPricing(){
   const badge=document.getElementById('pricingCount');
@@ -847,7 +1580,7 @@ function syncPricing(){
 }
 let _expandedPricingId = null;
 function renderPricingTable(){
-  const q=(document.getElementById('searchPricing').value||"").trim().toLowerCase();
+  const q=((_getEl('searchPricing')?.value)||"").trim().toLowerCase();
   const body=document.getElementById('pricingTableBody');
   if(!body) return;
   try{
@@ -1123,12 +1856,13 @@ function renderCart(){
   updateTotal();
 }
 function renderDetails(prod){
-  const hasDetails = typeof dName !== 'undefined' && dName && typeof dBarcode !== 'undefined' && dBarcode;
+  const dNameEl=_getEl('dName'), dBarcodeEl=_getEl('dBarcode'), dSerialEl=_getEl('dSerial'), dPriceEl=_getEl('dPrice'), dStockEl=_getEl('dStock');
+  const hasDetails = !!(dNameEl && dBarcodeEl);
   if(!hasDetails) { selected=prod; return; }
-  if(!prod){ dName.textContent="اختر منتج أو امسح باركود"; dBarcode.textContent="—"; dSerial.textContent="—"; dPrice.textContent="—"; dStock.textContent="المتاح: —"; selected=null; return; }
+  if(!prod){ if(dNameEl) dNameEl.textContent="اختر منتج أو امسح باركود"; if(dBarcodeEl) dBarcodeEl.textContent="—"; if(dSerialEl) dSerialEl.textContent="—"; if(dPriceEl) dPriceEl.textContent="—"; if(dStockEl) dStockEl.textContent="المتاح: —"; selected=null; return; }
   selected=prod;
   const seq=products.indexOf(prod)+1;
-  dName.textContent=prod.name; dBarcode.textContent="باركود: "+prod.barcode; dSerial.textContent=`#${seq} — ${String(prod.id).padStart(4,'0')}`; dPrice.textContent=parseFloat(prod.price).toFixed(2)+" جنيه"; dStock.textContent=`المتاح: ${prod.stock} قطعة`;
+  if(dNameEl) dNameEl.textContent=prod.name; if(dBarcodeEl) dBarcodeEl.textContent="باركود: "+prod.barcode; if(dSerialEl) dSerialEl.textContent=`#${seq} — ${String(prod.id).padStart(4,'0')}`; if(dPriceEl) dPriceEl.textContent=parseFloat(prod.price).toFixed(2)+" جنيه"; if(dStockEl) dStockEl.textContent=`المتاح: ${prod.stock} قطعة`;
 }
 function changeQty(idx,delta){
   const it=cart[idx]; if(!it) return;
@@ -1155,11 +1889,16 @@ function checkout(){
   const tb=document.getElementById('tableBody'); if(tb) renderTable();
 }
 
-setInterval(()=>{ const d=new Date(); const cl=document.getElementById('clock'); const dl=document.getElementById('dateLabel'); if(cl) cl.textContent=d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', hour12:true}); if(dl) dl.textContent=d.toLocaleDateString('en-GB'); },1000);
+setInterval(()=>{ try{ const d=new Date(); const cl=document.getElementById('clock'); const dl=document.getElementById('dateLabel'); if(cl) cl.textContent=d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit', hour12:true}); if(dl) dl.textContent=d.toLocaleDateString('en-GB'); }catch(e){} },1000);
 const scanEl=document.getElementById('scan');
-if(scanEl) scanEl.addEventListener('keydown', e=>{ if(e.key==='Enter') scanEnter(); });
-genBarcode(); renderTable(); renderUserTable(); renderPricingTable(); renderShortageTable(); if(typeof renderCart==='function') renderCart();
-// افتراضي: افتح على قائمة المنتجات V4.11
+if(scanEl) try{ scanEl.addEventListener('keydown', e=>{ if(e.key==='Enter') try{ scanEnter(); }catch(_){} }); }catch(e){}
+try{ genBarcode(); }catch(e){ console.warn('genBarcode init fail', e.message); }
+try{ renderTable(); }catch(e){ console.warn('renderTable init fail', e.message); }
+try{ renderUserTable(); }catch(e){ console.warn('renderUserTable init fail', e.message); }
+try{ renderPricingTable(); }catch(e){ console.warn('renderPricingTable init fail', e.message); }
+try{ renderShortageTable(); }catch(e){ console.warn('renderShortageTable init fail', e.message); }
+try{ if(typeof renderCart==='function') renderCart(); }catch(e){}
+ // افتراضي: افتح على قائمة المنتجات V4.11
 try{ switchRole('employee'); }catch(e){}
 // عرض فوري للكاش المحلي — يظهر مزامن بالأزرق حتى قبل وصول السحابة
 // === إرسال إعدادات Supabase إلى SW للمزامنة الذاتية — V4.4 مُصلح جذري (يعيد المحاولة حتى ينجح) ===
@@ -1535,7 +2274,9 @@ window.addEventListener('error', (e)=>{
     _bootErrors++;
     _lastErrorTime=Date.now();
     // لو 3 أخطاء في أول 5 ثواني → تعارض واضح → امسح OTA تلقائياً
-    if(_bootErrors>=3 && Date.now() - performance.timing.navigationStart < 6000){
+    let _elapsed = 99999;
+    try{ _elapsed = (typeof performance !== 'undefined' && performance.now) ? performance.now() : (Date.now() - ((performance.timing && performance.timing.navigationStart) || performance.timeOrigin || Date.now())); }catch(e){}
+    if(_bootErrors>=3 && _elapsed < 6000){
       console.warn('[AUTO-RECOVER] أخطاء متتالية → مسح OTA');
       autoRecoverBlackScreen('js_error');
     }
@@ -1565,11 +2306,13 @@ setTimeout(()=>{
   try{
     const splash=document.getElementById('splash');
     const phone=document.querySelector('.phone');
+    let _elapsed2 = 99999;
+    try{ _elapsed2 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0; }catch(e){}
     const splashStuck = splash && document.body.contains(splash) && splash.style.opacity!=='0' && getComputedStyle(splash).display!=='none';
     const phoneHidden = phone && (phone.offsetHeight<50 || getComputedStyle(phone).display==='none');
     const bodyBlack = document.body && getComputedStyle(document.body).backgroundColor==='rgba(0, 0, 0, 0)';
-    if((splashStuck && Date.now()-performance.timing.navigationStart>7000) || phoneHidden){
-      console.warn('[AUTO-RECOVER] شاشة سودة مكتشفة', {splashStuck, phoneHidden});
+    if((splashStuck && _elapsed2>7000) || phoneHidden){
+      console.warn('[AUTO-RECOVER] شاشة سودة مكتشفة', {splashStuck, phoneHidden, _elapsed2});
       autoRecoverBlackScreen('black_screen');
     }
   }catch(e){}
@@ -1578,6 +2321,7 @@ setTimeout(()=>{
 let _lastBgClean = 0;
 async function backgroundAutoClean(){
   try{
+    if(_syncInProgress) return;
     if(!window.SupabaseSync || !SupabaseSync.isConfigured()) return;
     const now = Date.now();
     if(now - _lastBgClean < 30000) return;
@@ -1585,24 +2329,11 @@ async function backgroundAutoClean(){
     _lastBgClean = now;
     const d = await SupabaseSync.getProducts();
     if(!Array.isArray(d)) return;
-    if(d.length===0){
-      _consecutiveEmptyCount = (_consecutiveEmptyCount||0)+1;
-      if(_consecutiveEmptyCount < 2){
-        console.log('[BG-clean] سحابة فارغة أول مرة — تأجيل');
-        return;
-      }
-      if(products.length>0){
-        console.log('[BG-clean] سحابة فارغة مؤكدة — مسح الذاكرة');
-        products = [];
-        _syncWindowProducts();
-        try{ _updateSWBgState(); }catch(e){}
-        _lastTableHash=""; _lastUserHash=""; _lastPricingHash=""; _lastShortageHash="";
-        try{ renderUserTable(); renderPricingTable(); renderShortageTable(); const tb=document.getElementById('tableBody'); if(tb) renderTable(); }catch(e){}
-        _setBadge(0);
-      }
-    } else {
-      _consecutiveEmptyCount = 0;
-    }
+    // استخدم المسار الموحد _applyProducts لتوحيد منطق الفراغ والمزامنة
+    const changed = _applyProducts(d, 'BG-clean');
+    // _applyProducts يحدّث المنتجات والواجهة، لكن _setBadge يحتاج تحديث حتى لو لم يتغير
+    try{ _setBadge(products.length); }catch(e){}
+    if(changed) console.log('[BG-clean] تم تحديث من الخلفية');
   }catch(e){}
 }
 setTimeout(backgroundAutoClean, 6000);
@@ -1613,7 +2344,7 @@ setInterval(backgroundAutoClean, 90000); // كان 45ث → 90ث لتقليل ا
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="4.15";
+    const CUR="4.18";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');

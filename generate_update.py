@@ -32,7 +32,8 @@ def _scan_files():
                 if q.is_file() and q.suffix.lower() not in AUTO_EXCLUDE_EXT:
                     files.append(str(q.relative_to(BASE)))
     return sorted(set(files))
-FILES = _scan_files() if False else ["index.html","app.js","style.css","manifest.json","updater.js","supabase_sync.js"]
+# كان معطلاً (if False) — الآن يُحسب ديناميكياً ليشمل أي ملف جديد تلقائياً
+FILES = _scan_files() if True else ["index.html","app.js","style.css","manifest.json","updater.js","supabase_sync.js"]
 # ستُحسب ديناميكياً في main()
 
 def sha256_file(p):

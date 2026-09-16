@@ -34,6 +34,7 @@
   }
 
   async function supaFetch(path, opts={}){
+    if(typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('offline - no internet');
     const cfg = getConfig();
     if(!cfg || !cfg.url || !cfg.key) throw new Error('Supabase not configured');
     const headers = {
@@ -47,17 +48,18 @@
       Object.assign(headers, opts.headers);
       delete opts.headers;
     }
-    const ctrl = new AbortController();
-    const t = setTimeout(()=> ctrl.abort(), 8000); // V4.5.2: 8ث بدل 15ث لتسريع كشف الفشل (المزامنة بطيئة بسبب مهلة طويلة)
+    let ctrl=null, t=null;
+    try{ if(typeof AbortController !== 'undefined'){ ctrl=new AbortController(); t=setTimeout(()=> { try{ ctrl.abort(); }catch(e){} }, 8000); } }catch(e){ ctrl=null; t=null; }
     try{
-      const r = await fetch(`${cfg.url}/rest/v1/${path}`, {
+      const fetchOpts = {
         headers,
-        signal: ctrl.signal,
         mode: 'cors',
         cache: 'no-store',
         ...opts
-      });
-      clearTimeout(t);
+      };
+      if(ctrl && ctrl.signal) fetchOpts.signal = ctrl.signal;
+      const r = await fetch(`${cfg.url}/rest/v1/${path}`, fetchOpts);
+      if(t) clearTimeout(t);
       if(!r.ok){
         const txt = await r.text().catch(()=> r.statusText);
         // 503/429/502 هي أخطاء عابرة قابلة لإعادة المحاولة
@@ -69,7 +71,7 @@
       const data = await r.json().catch(()=> null);
       return data;
     }catch(e){
-      clearTimeout(t);
+      if(t) clearTimeout(t);
       if(e.name==='AbortError') throw new Error('انتهت مهلة الاتصال (8s) - تحقق من الإنترنت');
       throw e;
     }
@@ -115,9 +117,12 @@
           'Content-Type': 'application/json',
           'Prefer': 'resolution=merge-duplicates,return=representation'
         };
-        const ctrl = new AbortController(); const t=setTimeout(()=>ctrl.abort(), 10000);
-        const r = await fetch(`${cfg.url}/rest/v1/${TABLE}?on_conflict=barcode`, {method:'POST', headers, body: JSON.stringify(prod), signal: ctrl.signal, cache:'no-store'});
-        clearTimeout(t);
+        let ctrl=null, t=null;
+        try{ if(typeof AbortController !== 'undefined'){ ctrl=new AbortController(); t=setTimeout(()=>{ try{ ctrl.abort(); }catch(e){} }, 10000); } }catch(e){}
+        const _fetchOpts2 = {method:'POST', headers, body: JSON.stringify(prod), cache:'no-store'};
+        if(ctrl && ctrl.signal) _fetchOpts2.signal = ctrl.signal;
+        const r = await fetch(`${cfg.url}/rest/v1/${TABLE}?on_conflict=barcode`, _fetchOpts2);
+        if(t) clearTimeout(t);
         if(r.ok){
           const data = await r.json().catch(()=>null);
           return data && data[0] ? data[0] : null;
@@ -211,6 +216,7 @@
   let _enabled = false;
   let _heartbeatTimer = null;
   let _openTimeout = null;
+  let _msgDebounceTimer = null;
 
   function _isWsAlive(){
     return _ws && _ws.readyState === 1; // OPEN
@@ -221,6 +227,7 @@
   function _clearRealtimeTimers(){
     if(_heartbeatTimer){ clearInterval(_heartbeatTimer); _heartbeatTimer=null; }
     if(_openTimeout){ clearTimeout(_openTimeout); _openTimeout=null; }
+    if(_msgDebounceTimer){ clearTimeout(_msgDebounceTimer); _msgDebounceTimer=null; }
   }
 
   function _connectRealtime(onChange){
@@ -305,15 +312,23 @@
           }
           if(eventType){
             console.log('[Supabase RT] change', eventType, payloadData ? (payloadData.table || TABLE) : '');
-            // لأي تغيير (INSERT/UPDATE/DELETE) اطلب تحديث كامل — يضمن معالجة DELETE موثوقة
-            getProducts().then(data=>{ try{ _onChange(data); }catch(e){} }).catch(()=>{});
+            // debounce: تجميع التغييرات السريعة (Bulk) في طلب واحد
+            if(_msgDebounceTimer) clearTimeout(_msgDebounceTimer);
+            _msgDebounceTimer = setTimeout(()=>{
+              _msgDebounceTimer=null;
+              getProducts().then(data=>{ try{ _onChange(data); }catch(e){} }).catch(()=>{});
+            }, 400);
             return;
           }
           // fallback: أي رسالة على قناة الجدول → حدث
           if(msg.topic && msg.topic.includes(TABLE) && msg.payload){
             if(msg.payload.record || msg.payload.new || msg.payload.old || msg.payload.data){
-              console.log('[Supabase RT] fallback refresh');
-              getProducts().then(data=>{ try{ _onChange(data); }catch(e){} }).catch(()=>{});
+              console.log('[Supabase RT] fallback refresh (debounced)');
+              if(_msgDebounceTimer) clearTimeout(_msgDebounceTimer);
+              _msgDebounceTimer = setTimeout(()=>{
+                _msgDebounceTimer=null;
+                getProducts().then(data=>{ try{ _onChange(data); }catch(e){} }).catch(()=>{});
+              }, 400);
             }
           }
         }catch(e){ console.log('[Supabase RT] parse fail', e.message); }

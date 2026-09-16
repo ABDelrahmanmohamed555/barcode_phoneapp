@@ -2,7 +2,7 @@
 // يعمل في المتصفح و Cordova (file://) بدون الحاجة لإعادة بناء APK
 // الفكرة: يفحص version.json من السيرفر، لو نسخة جديدة يحمل الملفات ويطبقها
 (function(){
-  const CURRENT_VERSION = "4.15"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
+  const CURRENT_VERSION = "4.18"; // يجب أن يتطابق مع version.json — يُحدثه generate_update.py تلقائياً
   const STORAGE_KEY_VERSION = "ota_version";
   const STORAGE_KEY_IGNORE = "ota_ignore_version";
   const CHECK_INTERVAL_MS = 5 * 60 * 1000; // فحص كل 5 دقائق + عند كل فتح (كان ساعة)
@@ -46,15 +46,17 @@
   }
 
   async function tryFetchBase(base, timeoutMs=900){
-    const ctrl = new AbortController();
-    const t = setTimeout(()=> ctrl.abort(), timeoutMs);
+    let ctrl=null, t=null;
+    try{ if(typeof AbortController !== 'undefined'){ ctrl=new AbortController(); t=setTimeout(()=>{ try{ ctrl.abort(); }catch(e){} }, timeoutMs); } }catch(e){}
     try{
-      const r = await fetch(base + '/api/app_version?_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal});
-      clearTimeout(t);
+      const _opts={cache:'no-store'};
+      if(ctrl && ctrl.signal) _opts.signal=ctrl.signal;
+      const r = await fetch(base + '/api/app_version?_t=' + Date.now(), _opts);
+      if(t) clearTimeout(t);
       if(!r.ok) return false;
       const j = await r.json();
       return !!j.version;
-    }catch(e){ clearTimeout(t); return false; }
+    }catch(e){ if(t) clearTimeout(t); return false; }
   }
 
   async function autoDiscoverServer(){
@@ -234,22 +236,19 @@
   let _pendingData = null;
 
   async function fetchVersion(url){
-    const controller = new AbortController();
-    const t = setTimeout(()=>controller.abort(), 9000);
+    let controller=null, t=null;
+    try{ if(typeof AbortController !== 'undefined'){ controller=new AbortController(); t=setTimeout(()=>{ try{ controller.abort(); }catch(e){} }, 9000); } }catch(e){}
     try{
-      const r = await fetch(url + (url.includes('?')?'&':'?') + '_t=' + Date.now(), {
-        cache:'no-store',
-        signal: controller.signal,
-        headers:{'Cache-Control':'no-cache','Accept':'application/json'},
-        mode: 'cors'
-      });
-      clearTimeout(t);
+      const _opts2={cache:'no-store', headers:{'Cache-Control':'no-cache','Accept':'application/json'}, mode:'cors'};
+      if(controller && controller.signal) _opts2.signal=controller.signal;
+      const r = await fetch(url + (url.includes('?')?'&':'?') + '_t=' + Date.now(), _opts2);
+      if(t) clearTimeout(t);
       if(!r.ok) throw new Error('HTTP '+r.status);
       const j = await r.json();
       if(!j.version) throw new Error('version missing');
       return j;
     }catch(e){
-      clearTimeout(t);
+      if(t) clearTimeout(t);
       throw e;
     }
   }
@@ -287,11 +286,13 @@
     return null;
   }
   async function checkGitHubUpdates(){
-    const ctrl = new AbortController();
-    const t = setTimeout(()=> ctrl.abort(), 10000);
+    let ctrl=null, t=null;
+    try{ if(typeof AbortController !== 'undefined'){ ctrl=new AbortController(); t=setTimeout(()=>{ try{ ctrl.abort(); }catch(e){} }, 10000); } }catch(e){}
     try{
-      const r = await fetch(GITHUB_COMMITS_API + '&_t=' + Date.now(), {cache:'no-store', signal: ctrl.signal, headers:{'Accept':'application/vnd.github.v3+json'}, mode:'cors'});
-      clearTimeout(t);
+      const _opts3={cache:'no-store', headers:{'Accept':'application/vnd.github.v3+json'}, mode:'cors'};
+      if(ctrl && ctrl.signal) _opts3.signal=ctrl.signal;
+      const r = await fetch(GITHUB_COMMITS_API + '&_t=' + Date.now(), _opts3);
+      if(t) clearTimeout(t);
       if(!r.ok){
         if(r.status===403) console.warn('[OTA] GitHub rate limit 403 — سيعتمد على version.json مباشرة');
         throw new Error('GitHub '+r.status);
@@ -324,7 +325,7 @@
           }
         }
       }
-    }catch(e){ clearTimeout(t); console.log('[OTA] GitHub check fail', e.message); }
+    }catch(e){ if(t) clearTimeout(t); console.log('[OTA] GitHub check fail', e.message); }
     return null;
   }
 
