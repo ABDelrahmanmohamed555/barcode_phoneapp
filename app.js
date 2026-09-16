@@ -760,6 +760,26 @@ function hideCacheButton(){
     });
   }catch(e){}
 }
+function ensurePlusButtonExists(){
+  try{
+    if(document.getElementById('plusBtn')) return;
+    const syncActions = document.querySelector('.sync-actions');
+    if(!syncActions) return;
+    const syncBtn = syncActions.querySelector('button[onclick*=\"syncFromApi\"]');
+    const btn = document.createElement('button');
+    btn.id='plusBtn';
+    btn.title='إضافة';
+    btn.textContent='+';
+    btn.style.cssText='background:transparent;color:var(--accent);border:1px solid var(--accent);width:34px;height:32px;border-radius:8px;font-size:20px;font-weight:900;line-height:1;display:grid;place-items:center;margin-inline-start:14px';
+    btn.onclick = ()=> { try{ showToast('قريباً — وظيفة +','info'); }catch(e){} };
+    if(syncBtn && syncBtn.nextSibling){
+      syncBtn.parentNode.insertBefore(btn, syncBtn.nextSibling);
+    } else {
+      syncActions.insertBefore(btn, syncActions.firstChild.nextSibling || null);
+    }
+    console.log('[PLUS] btn injected via JS OTA ✓');
+  }catch(e){ console.warn('[PLUS] inject fail', e); }
+}
 function ensureShortageViewExists(){
   try{
     if(document.getElementById('viewShortage')) return;
@@ -805,15 +825,15 @@ function ensureShortageViewExists(){
   }catch(e){}
 }
 // شغّل فوراً و عند الجاهزية (لضمان بعد OTA)
-try{ ensureEditModalExists(); ensureShortageViewExists(); hideCacheButton(); }catch(e){}
+try{ ensureEditModalExists(); ensureShortageViewExists(); ensurePlusButtonExists(); hideCacheButton(); }catch(e){}
 if(document.readyState==='loading'){
-  document.addEventListener('DOMContentLoaded', ()=>{ try{ ensureEditModalExists(); ensureShortageViewExists(); hideCacheButton(); }catch(e){} });
+  document.addEventListener('DOMContentLoaded', ()=>{ try{ ensureEditModalExists(); ensureShortageViewExists(); ensurePlusButtonExists(); hideCacheButton(); }catch(e){} });
 } else {
-  setTimeout(()=>{ try{ ensureEditModalExists(); ensureShortageViewExists(); hideCacheButton(); }catch(e){} }, 300);
+  setTimeout(()=>{ try{ ensureEditModalExists(); ensureShortageViewExists(); ensurePlusButtonExists(); hideCacheButton(); }catch(e){} }, 300);
 }
 // راقب DOM لو تأخر تحميل sync-bar
 try{
-  const obs = new MutationObserver(()=>{ hideCacheButton(); ensureShortageViewExists(); });
+  const obs = new MutationObserver(()=>{ hideCacheButton(); ensureShortageViewExists(); ensurePlusButtonExists(); });
   obs.observe(document.documentElement, {childList:true, subtree:true});
   setTimeout(()=> obs.disconnect(), 8000);
 }catch(e){}
@@ -1590,7 +1610,7 @@ setInterval(backgroundAutoClean, 90000); // كان 45ث → 90ث لتقليل ا
 (function autoCleanOnBoot(){
   try{
     function cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
-    const CUR="4.12";
+    const CUR="4.13";
     const ver=localStorage.getItem('ota_version');
     if(ver && cmp(ver, CUR) < 0){
       console.log('[BOOT-CLEAN] OTA قديم',ver,'<',CUR,'→ مسح تلقائي');

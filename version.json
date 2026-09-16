@@ -1,28 +1,30 @@
 {
-  "version": "4.12",
-  "build": 94,
-  "date": "2026-09-15T20:55:58",
-  "notes": "العدد المتاح باللون الأبيض في كل القوائم",
+  "version": "4.13",
+  "build": 96,
+  "date": "2026-09-16T15:52:34",
+  "notes": "إضافة رمز + بجانب زر المزامنة للمعاينة - مع حقن OTA",
   "min_app_version": "1.0.0",
   "bundle_url": null,
   "files": {
-    "app.js": "6ead11093ac598edd581f41d4e7f88236960bfdace80858a2202c2d71ab2b1fd",
+    "app.js": "1c7ef925534697ccb7d964a045cf9124012f9c501397868649a254c6af3d0e05",
     "clear_cache.html": "bd4ad6bbd26800c0179ff18fdacf55de7f24101c6b1db2cb40fd7a127e8dab6e",
     "debug_supabase.html": "abacb753227f164259a902d396f75d54c11c0f6e0f569edeb5fda0382a87439c",
     "fcm_manager.js": "36d1e6837de2f18a5b3ca97e064be8abf651d2e435ed8b031229db73e2c31c5f",
     "icon.png": "5241817c66d51c854975a8e6949af3ed1d35cb68bfe88d43fdcf74c660798faf",
-    "index.html": "3f5eb043026467b957c95b69f384d6153edc8af401ed3611e0f80194aba64f32",
+    "index.html": "833c0f7e48351febc0a8eba33451cd6e05de62d78357765abfca6e21d9dad1b0",
     "manifest.json": "9efd63864d9b23c36eb2be6c054762f0fda7e3c6ca946064d6be411b60b5df26",
     "preview_notif.html": "29139a28d155a304be121ee9b1a2169be43671c08c6519367e34b53c49a289b2",
     "products.json": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
     "push_notifications.js": "5d6d6b8ddbcb3a95dbcfa4f911835140eb8ce03919923b49c5bb8d5a07186f9b",
     "style.css": "7505f77120c86fc033a3bd82b971b1685d303a822ec1cc26d3f5098a39fb60be",
     "supabase_sync.js": "294303e853a754039fd9317e72d57d9221c0f06371fc4d8f1c178669d3d51ce4",
-    "sw.js": "5f3b6c703a170e023801431baa5dc477af3d452c49f03eb74da1b9b707af170e",
-    "updater.js": "6655a85c143008a641270317bd00ef851ffa75109e06f318f8ca6810c75866e8",
-    "version.json": "44ca822d7ccdc2c57ebaa4ac4f8f15618308b8f30553acbafa39b7c231c60b09"
+    "sw.js": "649645be85f6ed76610449817e256ff5a1d076c9baddad566ae68f8fbf28b84f",
+    "updater.js": "214e32a6db93b8c6c6e8155621fe0e1ff7d14f23b90d37c50e56665d43cd59af",
+    "version.json": "9faac2b74e1ab981f7a5de530c68b9b3d3f2eb5d68e52681362922470bc85f39"
   },
   "changelog": [
+    "4.13 - إضافة رمز + بجانب زر المزامنة للمعاينة - مع حقن OTA (2026-09-16)",
+    "4.13 - إضافة رمز + بجانب زر المزامنة للمعاينة (2026-09-16)",
     "4.12 - العدد المتاح باللون الأبيض في كل القوائم (2026-09-15)",
     "4.11 - فتح التطبيق افتراضياً على قائمة المنتجات (2026-09-14)",
     "4.10 - أزرار القوائم شفافة والنشط ذهبي مع انيميشن انتقال ناعم - إصلاح حقن النواقص (2026-09-14)",
@@ -40,8 +42,6 @@
     "4.5 - إصلاح مزامنة GitHub OTA جذري + تحديث نظام الإشعارات V4.4 + إضافة local-notification CI (2026-09-14)",
     "4.4 - إصلاح جذري للإشعارات - V4.4 يعمل داخل وخارج التطبيق حتى لو مقفول - إضافة local notification + إصلاح SW config + تفعيل تلقائي (2026-09-14)",
     "4.3 - إصلاح الإشعارات خارج التطبيق - SW بدون Notification API (2026-09-13)",
-    "4.3 - إصلاح الإشعارات خارج التطبيق - دعم Cordova local notification + حل رسالة المتصفح لا يدعم (2026-09-13)",
-    "4.2 - إضافة FCM للإشعارات الفورية وهو مقفول - مع الحفاظ على مزامنة Supabase المستقرة (2026-09-13)",
-    "4.1 - الرجوع لـ 3.28 المستقر بعد فشل 4.0 - إلغاء إعادة البناء (2026-09-13)"
+    "4.3 - إصلاح الإشعارات خارج التطبيق - دعم Cordova local notification + حل رسالة المتصفح لا يدعم (2026-09-13)"
   ]
 }
