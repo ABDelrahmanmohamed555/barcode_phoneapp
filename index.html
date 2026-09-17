@@ -24,7 +24,7 @@
       for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; }
       return 0;
     }
-    const CUR="4.18";
+    const CUR="4.21";
     // --- تنظيف تلقائي عند كل فتحة: لو OTA قديم أو تالف امسحه صامت ---
     try{
       const ver=localStorage.getItem('ota_version');
@@ -209,7 +209,7 @@
   function injectOrLoad(key, src, label){
     try{
       const ver=localStorage.getItem('ota_version');
-      const cur="4.18";
+      const cur="4.21";
       function _cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
       const otaVal=localStorage.getItem(key);
       if(otaVal && ver && _cmp(ver,cur)>0){
@@ -230,7 +230,7 @@
   // لو style OTA لم يُحقن مبكراً (fallback)
   try{
     const ver=localStorage.getItem('ota_version');
-    const cur="4.18";
+    const cur="4.21";
     function _cmp2(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
     if(ver && _cmp2(ver,cur)>0){
       const css=localStorage.getItem('ota_style.css');
@@ -392,12 +392,7 @@
         <button class="edit-modal-close" onclick="closeBulkModal()" aria-label="إغلاق">✕</button>
       </div>
       <div class="edit-modal-body">
-        <label class="label">نوع الزيادة</label>
-        <select id="bulkType" class="input">
-          <option value="percent">نسبة مئوية %</option>
-          <option value="fixed">مبلغ ثابت (جنيه)</option>
-        </select>
-        <label class="label">قيمة الزيادة (أرقام فقط)</label>
+        <label class="label">قيمة الزيادة (جنيه)</label>
         <input id="bulkValue" class="input" type="number" inputmode="decimal" placeholder="مثال: 10" oninput="this.value=this.value.replace(/[^0-9.]/g,'').replace(/(\..*)\./g,'$1')" />
         <div style="font-size:11px;color:#9e9e9e;margin-top:4px">تُطبق فقط على المنتجات المسعّرة ومتاحها &gt;0 — غير ذلك يُترك كما هو</div>
 
@@ -413,7 +408,7 @@
           </label>
           <label style="display:flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer">
             <input type="radio" name="bulkScope" value="product" onchange="onBulkScopeChange()" />
-            <span>منتج معين</span>
+            <span>بحث نصي (كلمة أو أكثر)</span>
           </label>
         </div>
 
@@ -423,10 +418,13 @@
         </div>
 
         <div id="bulkProductWrap" style="display:none;margin-top:10px">
-          <label class="label">ابحث عن المنتج (بالاسم أو الباركود)</label>
-          <input id="bulkProductSearch" class="input" placeholder="اكتب للبحث..." oninput="onBulkProductSearch(this.value)" autocomplete="off"/>
+          <label class="label">فلترة بالكلمات (مثلاً: ترموستات)</label>
+          <input id="bulkProductSearch" class="input" placeholder="اكتب كلمة أو أكثر — سيطبق على كل المطابق" oninput="onBulkProductSearch(this.value)" autocomplete="off"/>
+          <div style="font-size:11px;color:#9e9e9e;margin-top:4px">لو كتبت كلمتين، أي منتج فيه الكلمتين سيُطبق — مثال: ترموستات مروحة</div>
           <div id="bulkProductList" style="max-height:160px;overflow-y:auto;margin-top:6px;border:1px solid var(--border);border-radius:8px;display:none;background:var(--bg-input)"></div>
           <div id="bulkProductSelected" style="margin-top:8px;padding:8px;background:rgba(200,148,58,.12);border:1px solid var(--accent);border-radius:8px;display:none;font-size:12px"></div>
+          <button type="button" id="bulkPreviewBtn" class="btn btn-ghost" style="width:100%;height:32px;margin-top:8px;display:none;font-size:12px" onclick="toggleBulkPreviewList()">👁 معاينة المنتجات (<span id="bulkPreviewCount">0</span>)</button>
+          <div id="bulkPreviewList" style="max-height:200px;overflow-y:auto;margin-top:6px;border:1px solid var(--border);border-radius:8px;display:none;background:var(--bg-card);padding:6px"></div>
         </div>
 
         <div id="bulkPreview" style="margin-top:12px;padding:10px;background:rgba(45,138,78,.1);border:1px solid rgba(45,138,78,.25);border-radius:8px;display:none;font-size:12px;color:#a8d5b5"></div>
@@ -447,12 +445,7 @@
         <button class="edit-modal-close" onclick="closeDiscountModal()" aria-label="إغلاق">✕</button>
       </div>
       <div class="edit-modal-body">
-        <label class="label">نوع الخصم</label>
-        <select id="discountType" class="input">
-          <option value="percent">نسبة مئوية %</option>
-          <option value="fixed">مبلغ ثابت (جنيه)</option>
-        </select>
-        <label class="label">قيمة الخصم (أرقام فقط)</label>
+        <label class="label">قيمة الخصم (جنيه)</label>
         <input id="discountValue" class="input" type="number" inputmode="decimal" placeholder="مثال: 10" oninput="this.value=this.value.replace(/[^0-9.]/g,'').replace(/(\..*)\./g,'$1')" />
         <div style="font-size:11px;color:#9e9e9e;margin-top:4px">يُطبق فقط على المسعّرة ومتاحها &gt;0 — لن يقل عن 0 جنيه وغير ذلك يُترك</div>
 
@@ -468,7 +461,7 @@
           </label>
           <label style="display:flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer">
             <input type="radio" name="discountScope" value="product" onchange="onDiscountScopeChange()" />
-            <span>منتج معين</span>
+            <span>بحث نصي (كلمة أو أكثر)</span>
           </label>
         </div>
 
@@ -478,10 +471,13 @@
         </div>
 
         <div id="discountProductWrap" style="display:none;margin-top:10px">
-          <label class="label">ابحث عن المنتج (بالاسم أو الباركود)</label>
-          <input id="discountProductSearch" class="input" placeholder="اكتب للبحث..." oninput="onDiscountProductSearch(this.value)" autocomplete="off"/>
+          <label class="label">فلترة بالكلمات (مثلاً: ترموستات)</label>
+          <input id="discountProductSearch" class="input" placeholder="اكتب كلمة أو أكثر — سيطبق على كل المطابق" oninput="onDiscountProductSearch(this.value)" autocomplete="off"/>
+          <div style="font-size:11px;color:#9e9e9e;margin-top:4px">لو كتبت كلمتين، أي منتج فيه الكلمتين سيُطبق — مثال: ترموستات مروحة</div>
           <div id="discountProductList" style="max-height:160px;overflow-y:auto;margin-top:6px;border:1px solid var(--border);border-radius:8px;display:none;background:var(--bg-input)"></div>
           <div id="discountProductSelected" style="margin-top:8px;padding:8px;background:rgba(199,62,62,.12);border:1px solid #c73e3e;border-radius:8px;display:none;font-size:12px"></div>
+          <button type="button" id="discountPreviewBtn" class="btn btn-ghost" style="width:100%;height:32px;margin-top:8px;display:none;font-size:12px" onclick="toggleDiscountPreviewList()">👁 معاينة المنتجات (<span id="discountPreviewCount">0</span>)</button>
+          <div id="discountPreviewList" style="max-height:200px;overflow-y:auto;margin-top:6px;border:1px solid var(--border);border-radius:8px;display:none;background:var(--bg-card);padding:6px"></div>
         </div>
 
         <div id="discountPreview" style="margin-top:12px;padding:10px;background:rgba(199,62,62,.08);border:1px solid rgba(199,62,62,.25);border-radius:8px;display:none;font-size:12px;color:#e8a0a0"></div>
@@ -653,7 +649,7 @@ window.addEventListener('load', ()=>{
 (function(){
   try{
     const ver = localStorage.getItem('ota_version');
-    const cur="4.18";
+    const cur="4.21";
     function _cmp(a,b){ const pa=String(a).split('.').map(x=>parseInt(x,10)||0); const pb=String(b).split('.').map(x=>parseInt(x,10)||0); const l=Math.max(pa.length,pb.length); for(let i=0;i<l;i++){ const av=pa[i]||0,bv=pb[i]||0; if(av>bv) return 1; if(av<bv) return -1; } return 0; }
     const otaApp = localStorage.getItem('ota_app.js');
     const hasOTA2 = ver && _cmp(ver, cur) > 0;
@@ -719,7 +715,7 @@ window.addEventListener('load', ()=>{
 <script>
 // اعرض نسخة OTA الحالية + حدّثها عند التحميل
 try{
-  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '4.18';
+  const _v = (window.OTA && OTA.getVersion()) || localStorage.getItem('ota_version') || '4.21';
   const el = document.getElementById('otaVerLabel');
   if(el) el.textContent = _v;
 }catch(e){}

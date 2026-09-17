@@ -1,7 +1,7 @@
 {
   "name": "elnahal-technology",
   "displayName": "elnahal technology",
-  "version": "4.18.0",
+  "version": "4.21.0",
   "description": "elnahal technology - نظام المنتجات والباركود V4.4 إصلاح إشعارات",
   "main": "index.js",
   "scripts": {
@@ -39,11 +39,11 @@
   "dependencies": {
     "cordova-plugin-background-fetch": "7.3.1",
     "cordova-plugin-background-mode": "0.7.3",
+    "cordova-plugin-badge": "0.8.8",
     "cordova-plugin-device": "3.0.0",
     "cordova-plugin-file": "8.1.3",
     "cordova-plugin-file-opener2": "4.0.0",
-    "cordova-plugin-zip": "3.1.0",
     "cordova-plugin-local-notification": "0.9.0-beta.3",
-    "cordova-plugin-badge": "0.8.8"
+    "cordova-plugin-zip": "3.1.0"
   }
 }
